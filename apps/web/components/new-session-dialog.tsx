@@ -19,6 +19,8 @@ type CreateSessionInput = {
   cloneUrl?: string;
   isNewBranch: boolean;
   sandboxType: SandboxType;
+  daytonaSnapshot?: string;
+  daytonaImage?: string;
   autoCommitPush: boolean;
   autoCreatePr: boolean;
   vercelProject?: VercelProjectSelection | null;

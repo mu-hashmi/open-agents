@@ -14,6 +14,10 @@ export interface DaytonaState {
   sandboxId?: string;
   /** Stable sandbox name used for reconnecting. */
   sandboxName?: string;
+  /** Optional Daytona snapshot used to seed a brand-new sandbox. */
+  snapshot?: string;
+  /** Optional Docker image reference used to seed a brand-new sandbox. */
+  image?: string;
   /** Persistent shell session identifier. */
   sessionId: string;
   /** Current working directory inside the sandbox. */

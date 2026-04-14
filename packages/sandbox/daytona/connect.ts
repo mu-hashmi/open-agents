@@ -41,6 +41,9 @@ export async function connectDaytona(
     }
   }
 
+  const snapshot = options?.snapshot ?? state.snapshot;
+  const image = snapshot ? undefined : (options?.image ?? state.image);
+
   return DaytonaSandbox.create({
     apiKey: options.apiKey,
     name: state.sandboxName,
@@ -57,9 +60,10 @@ export async function connectDaytona(
     gitUser: options.gitUser,
     hooks: options.hooks,
     autoStopInterval: options.autoStopInterval,
-    image: options.image,
+    image,
     resources: options.resources,
     ports: options.ports,
+    snapshot,
     sessionId: state.sessionId,
   });
 }

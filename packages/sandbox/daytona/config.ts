@@ -21,6 +21,7 @@ export interface DaytonaSandboxConfig {
   image?: string;
   resources?: Pick<Resources, "cpu" | "memory" | "disk">;
   ports?: number[];
+  snapshot?: string;
   sessionId: string;
 }
 

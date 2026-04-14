@@ -39,6 +39,8 @@ interface CreateSessionRequest {
   cloneUrl?: string;
   isNewBranch?: boolean;
   sandboxType?: "vercel" | "daytona";
+  daytonaSnapshot?: string;
+  daytonaImage?: string;
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   vercelProject?: VercelProjectSelection | null;
@@ -219,6 +221,26 @@ export async function POST(req: Request) {
   }
 
   if (
+    body.daytonaSnapshot !== undefined &&
+    typeof body.daytonaSnapshot !== "string"
+  ) {
+    return Response.json(
+      { error: "Invalid Daytona snapshot value" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.daytonaImage !== undefined &&
+    typeof body.daytonaImage !== "string"
+  ) {
+    return Response.json(
+      { error: "Invalid Daytona image value" },
+      { status: 400 },
+    );
+  }
+
+  if (
     body.repoOwner !== undefined &&
     (typeof body.repoOwner !== "string" ||
       !isValidGitHubRepoOwner(body.repoOwner))
@@ -262,6 +284,27 @@ export async function POST(req: Request) {
     autoCommitPush,
     autoCreatePr,
   } = body;
+  const daytonaSnapshot = body.daytonaSnapshot?.trim() || undefined;
+  const daytonaImage = body.daytonaImage?.trim() || undefined;
+
+  if (daytonaSnapshot && daytonaImage) {
+    return Response.json(
+      {
+        error: "Choose either a Daytona snapshot or a Daytona image, not both.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (sandboxType !== "daytona" && (daytonaSnapshot || daytonaImage)) {
+    return Response.json(
+      {
+        error:
+          "Daytona launch sources can only be used when creating a Daytona session.",
+      },
+      { status: 400 },
+    );
+  }
 
   if (
     sandboxType === "daytona" &&
@@ -360,7 +403,16 @@ export async function POST(req: Request) {
           ? effectiveAutoCreatePr
           : false,
         globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: createPendingSandboxState({ sandboxType, sessionId }),
+        sandboxState: createPendingSandboxState({
+          sandboxType,
+          sessionId,
+          ...(sandboxType === "daytona" && (daytonaSnapshot || daytonaImage)
+            ? {
+                ...(daytonaSnapshot ? { snapshot: daytonaSnapshot } : {}),
+                ...(daytonaImage ? { image: daytonaImage } : {}),
+              }
+            : {}),
+        }),
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

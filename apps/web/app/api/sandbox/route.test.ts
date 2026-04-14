@@ -7,7 +7,15 @@ interface TestSessionRecord {
   id: string;
   userId: string;
   lifecycleVersion: number;
-  sandboxState: { type: "vercel" };
+  sandboxState:
+    | { type: "vercel" }
+    | {
+        type: "daytona";
+        sessionId: string;
+        workingDirectory: string;
+        snapshot?: string;
+        image?: string;
+      };
   vercelProjectId: string | null;
   vercelProjectName: string | null;
   vercelTeamId: string | null;
@@ -26,23 +34,41 @@ interface KickCall {
 }
 
 interface ConnectConfig {
-  state: {
-    type: "vercel";
-    sandboxName?: string;
-    source?: {
-      repo?: string;
-      branch?: string;
-      newBranch?: string;
-    };
-  };
+  state:
+    | {
+        type: "vercel";
+        sandboxName?: string;
+        source?: {
+          repo?: string;
+          branch?: string;
+          newBranch?: string;
+        };
+      }
+    | {
+        type: "daytona";
+        sandboxName?: string;
+        snapshot?: string;
+        image?: string;
+        source?: {
+          repo?: string;
+          branch?: string;
+          newBranch?: string;
+        };
+        sessionId: string;
+        workingDirectory: string;
+      };
   options?: {
+    apiKey?: string;
+    env?: Record<string, string>;
     githubToken?: string;
     gitUser?: {
       email?: string;
     };
+    ports?: number[];
     persistent?: boolean;
     resume?: boolean;
     createIfMissing?: boolean;
+    autoStopInterval?: number;
   };
 }
 
@@ -60,6 +86,7 @@ const dotenvSyncCalls: Array<Record<string, unknown>> = [];
 let sessionRecord: TestSessionRecord;
 let currentVercelAuthInfo: TestVercelAuthInfo | null;
 let currentGitHubToken: string | null;
+let currentDaytonaApiKey: string | null;
 let currentDotenvContent: string;
 let currentDotenvError: Error | null;
 
@@ -88,6 +115,11 @@ mock.module("@/lib/github/user-token", () => ({
   getUserGitHubToken: async () => currentGitHubToken,
 }));
 
+mock.module("@/lib/daytona/api-key", () => ({
+  getUserDaytonaApiKey: async () => currentDaytonaApiKey,
+  hasUserDaytonaApiKey: async () => currentDaytonaApiKey !== null,
+}));
+
 mock.module("@/lib/vercel/token", () => ({
   getUserVercelAuthInfo: async () => currentVercelAuthInfo,
   getUserVercelToken: async () => currentVercelAuthInfo?.token ?? null,
@@ -106,8 +138,13 @@ mock.module("@/lib/vercel/projects", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  countSessionsByUserId: async () => 0,
+  createSessionWithInitialChat: async () => null,
+  getArchivedSessionCountByUserId: async () => 0,
   getChatsBySessionId: async () => [],
   getSessionById: async () => sessionRecord,
+  getSessionsWithUnreadByUserId: async () => [],
+  getUsedSessionTitles: async () => new Set<string>(),
   updateSession: async (sessionId: string, patch: Record<string, unknown>) => {
     updateCalls.push({ sessionId, patch });
     return {
@@ -126,15 +163,28 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
 mock.module("@open-harness/sandbox", () => ({
   connectSandbox: async (config: ConnectConfig) => {
     connectConfigs.push(config);
+    const workingDirectory =
+      config.state.type === "daytona"
+        ? config.state.workingDirectory
+        : "/vercel/sandbox";
 
     return {
       currentBranch: "main",
-      workingDirectory: "/vercel/sandbox",
-      getState: () => ({
-        type: "vercel" as const,
-        sandboxName: config.state.sandboxName ?? "session_session-1",
-        expiresAt: Date.now() + 120_000,
-      }),
+      workingDirectory,
+      getState: () =>
+        config.state.type === "daytona"
+          ? {
+              type: "daytona" as const,
+              sandboxName: config.state.sandboxName ?? "session_session-1",
+              sessionId: config.state.sessionId,
+              workingDirectory: config.state.workingDirectory,
+              expiresAt: Date.now() + 120_000,
+            }
+          : {
+              type: "vercel" as const,
+              sandboxName: config.state.sandboxName ?? "session_session-1",
+              expiresAt: Date.now() + 120_000,
+            },
       exec: async (command: string, cwd: string, timeoutMs: number) => {
         execCalls.push({ command, cwd, timeoutMs });
         if (command === 'printf %s "$HOME"') {
@@ -179,6 +229,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       externalId: "user_ext_1",
     };
     currentGitHubToken = null;
+    currentDaytonaApiKey = "daytona-key";
     currentDotenvContent = 'API_KEY="secret"\n';
     currentDotenvError = null;
     sessionRecord = {
@@ -382,6 +433,88 @@ describe("/api/sandbox lifecycle kicks", () => {
         }),
       ]),
     );
+  });
+
+  test("daytona sandboxes inherit the pending session snapshot", async () => {
+    const { POST } = await routeModulePromise;
+
+    sessionRecord.vercelProjectId = null;
+    sessionRecord.vercelProjectName = null;
+    sessionRecord.vercelTeamId = null;
+    sessionRecord.sandboxState = {
+      type: "daytona",
+      sessionId: "session-session-1",
+      workingDirectory: "/home/daytona/workspace",
+      snapshot: "snap-dev-base",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "daytona",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "daytona",
+        sandboxName: "session_session-1",
+        snapshot: "snap-dev-base",
+        sessionId: "session-session-1",
+        workingDirectory: "/home/daytona/workspace",
+      },
+      options: {
+        apiKey: "daytona-key",
+        resume: true,
+        createIfMissing: true,
+      },
+    });
+  });
+
+  test("daytona sandboxes inherit the pending session image", async () => {
+    const { POST } = await routeModulePromise;
+
+    sessionRecord.vercelProjectId = null;
+    sessionRecord.vercelProjectName = null;
+    sessionRecord.vercelTeamId = null;
+    sessionRecord.sandboxState = {
+      type: "daytona",
+      sessionId: "session-session-1",
+      workingDirectory: "/home/daytona/workspace",
+      image: "ghcr.io/acme/devbox:latest",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "daytona",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "daytona",
+        sandboxName: "session_session-1",
+        image: "ghcr.io/acme/devbox:latest",
+        sessionId: "session-session-1",
+        workingDirectory: "/home/daytona/workspace",
+      },
+      options: {
+        apiKey: "daytona-key",
+        resume: true,
+        createIfMissing: true,
+      },
+    });
   });
 
   test("rejects unsupported sandbox types", async () => {

@@ -19,6 +19,7 @@ let currentSession: {
 let existingSessionCount = 0;
 let savedLink: VercelProjectSelection | null = null;
 let currentVercelToken: string | null = "vercel-token";
+let hasDaytonaApiKey = true;
 let matchingProjects: VercelProjectSelection[] = [];
 const createCalls: Array<Record<string, unknown>> = [];
 const upsertCalls: Array<Record<string, unknown>> = [];
@@ -49,6 +50,13 @@ mock.module("@/lib/db/vercel-project-links", () => ({
 
 mock.module("@/lib/vercel/token", () => ({
   getUserVercelToken: async () => currentVercelToken,
+  getUserVercelAuthInfo: async () => null,
+}));
+
+mock.module("@/lib/daytona/api-key", () => ({
+  hasUserDaytonaApiKey: async () => hasDaytonaApiKey,
+  getUserDaytonaApiKey: async () =>
+    hasDaytonaApiKey ? "daytona-test-key" : null,
 }));
 
 mock.module("@/lib/vercel/projects", () => ({
@@ -79,8 +87,11 @@ mock.module("@/lib/db/sessions", () => ({
     };
   },
   getArchivedSessionCountByUserId: async () => 0,
+  getChatsBySessionId: async () => [],
+  getSessionById: async () => null,
   getSessionsWithUnreadByUserId: async () => [],
   getUsedSessionTitles: async () => new Set<string>(),
+  updateSession: async () => null,
 }));
 
 const routeModulePromise = import("./route");
@@ -108,6 +119,7 @@ describe("/api/sessions POST vercel project linking", () => {
     existingSessionCount = 0;
     savedLink = null;
     currentVercelToken = "vercel-token";
+    hasDaytonaApiKey = true;
     matchingProjects = [];
     createCalls.length = 0;
     upsertCalls.length = 0;
@@ -318,6 +330,85 @@ describe("/api/sessions POST vercel project linking", () => {
     expect(createCalls[0]).toMatchObject({
       globalSkillRefs: [{ source: "vercel/ai", skillName: "ai-sdk" }],
     });
+  });
+
+  test("persists a pending Daytona snapshot for new Daytona sessions", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        sandboxType: "daytona",
+        daytonaSnapshot: " snap-dev-base ",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({
+      sandboxState: {
+        type: "daytona",
+        sessionId: expect.stringMatching(/^session-/),
+        workingDirectory: expect.any(String),
+        snapshot: "snap-dev-base",
+      },
+    });
+  });
+
+  test("persists a pending Daytona image for new Daytona sessions", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        sandboxType: "daytona",
+        daytonaImage: " ghcr.io/acme/devbox:latest ",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({
+      sandboxState: {
+        type: "daytona",
+        sessionId: expect.stringMatching(/^session-/),
+        workingDirectory: expect.any(String),
+        image: "ghcr.io/acme/devbox:latest",
+      },
+    });
+  });
+
+  test("rejects Daytona launch sources for non-Daytona sessions", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        sandboxType: "vercel",
+        daytonaSnapshot: "snap-dev-base",
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe(
+      "Daytona launch sources can only be used when creating a Daytona session.",
+    );
+    expect(createCalls).toHaveLength(0);
+  });
+
+  test("rejects requests that include both a Daytona snapshot and image", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        sandboxType: "daytona",
+        daytonaSnapshot: "snap-dev-base",
+        daytonaImage: "ghcr.io/acme/devbox:latest",
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe(
+      "Choose either a Daytona snapshot or a Daytona image, not both.",
+    );
+    expect(createCalls).toHaveLength(0);
   });
 
   test("rejects invalid repository owners", async () => {

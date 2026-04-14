@@ -551,19 +551,32 @@ ${previewBlock}`;
   static async create(config: DaytonaSandboxConfig): Promise<DaytonaSandbox> {
     const daytona = new Daytona({ apiKey: config.apiKey });
     const env = buildSandboxEnv(config);
-    const sandbox = await daytona.create(
-      {
-        language: "typescript",
-        name: config.name,
-        envVars: env,
-        public: true,
-        autoStopInterval:
-          config.autoStopInterval ?? DEFAULT_AUTO_STOP_INTERVAL_MINUTES,
-        ...(config.image ? { image: config.image } : {}),
-        ...(config.resources ? { resources: config.resources } : {}),
-      },
-      { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
-    );
+
+    const baseParams = {
+      language: "typescript" as const,
+      name: config.name,
+      envVars: env,
+      public: true,
+      autoStopInterval:
+        config.autoStopInterval ?? DEFAULT_AUTO_STOP_INTERVAL_MINUTES,
+    };
+
+    const sandbox = config.snapshot
+      ? await daytona.create(
+          {
+            ...baseParams,
+            snapshot: config.snapshot,
+          },
+          { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
+        )
+      : await daytona.create(
+          {
+            ...baseParams,
+            ...(config.image ? { image: config.image } : {}),
+            ...(config.resources ? { resources: config.resources } : {}),
+          },
+          { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
+        );
 
     await ensureSessionExists(sandbox, config.sessionId);
 

@@ -30,6 +30,8 @@ import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import {
   canOperateOnSandbox,
   clearSandboxState,
+  getDaytonaImage,
+  getDaytonaSnapshot,
   getSessionSandboxName,
   hasResumableSandboxState,
 } from "@/lib/sandbox/utils";
@@ -173,6 +175,12 @@ export async function POST(req: Request) {
 
     sessionRecord = sessionContext.sessionRecord;
   }
+  const pendingDaytonaState =
+    sessionRecord?.sandboxState?.type === "daytona"
+      ? sessionRecord.sandboxState
+      : null;
+  const pendingDaytonaImage = getDaytonaImage(pendingDaytonaState);
+  const pendingDaytonaSnapshot = getDaytonaSnapshot(pendingDaytonaState);
 
   const sandboxName = sessionId ? getSessionSandboxName(sessionId) : undefined;
   const githubAccount = await getGitHubAccount(session.user.id);
@@ -218,9 +226,17 @@ export async function POST(req: Request) {
           state: {
             type: "daytona",
             ...(sandboxName ? { sandboxName } : {}),
+            ...(pendingDaytonaSnapshot
+              ? { snapshot: pendingDaytonaSnapshot }
+              : {}),
+            ...(pendingDaytonaImage ? { image: pendingDaytonaImage } : {}),
             source,
-            sessionId: `session-${sessionId ?? crypto.randomUUID()}`,
-            workingDirectory: DEFAULT_DAYTONA_WORKING_DIRECTORY,
+            sessionId:
+              pendingDaytonaState?.sessionId ??
+              `session-${sessionId ?? crypto.randomUUID()}`,
+            workingDirectory:
+              pendingDaytonaState?.workingDirectory ??
+              DEFAULT_DAYTONA_WORKING_DIRECTORY,
           },
           options: {
             apiKey: daytonaApiKey ?? undefined,

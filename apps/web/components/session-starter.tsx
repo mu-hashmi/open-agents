@@ -5,10 +5,8 @@ import {
   ChevronUpIcon,
   GitBranch,
   GitCommitHorizontal,
-  Loader2,
   Plus,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useDaytonaApiKeyStatus } from "@/hooks/use-daytona-api-key-status";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
@@ -21,9 +19,12 @@ import { BranchSelectorCompact } from "./branch-selector-compact";
 import { RepoSelectorCompact } from "./repo-selector-compact";
 import {
   DEFAULT_SANDBOX_TYPE,
-  SANDBOX_OPTIONS,
   type SandboxType,
 } from "./sandbox-selector-compact";
+import {
+  type DaytonaLaunchMode,
+  SessionStarterLaunchControls,
+} from "./session-starter-launch-controls";
 import { SessionStarterVercelSyncSection } from "./session-starter-vercel-sync-section";
 import { Switch } from "./ui/switch";
 
@@ -37,6 +38,8 @@ interface SessionStarterProps {
     cloneUrl?: string;
     isNewBranch: boolean;
     sandboxType: SandboxType;
+    daytonaSnapshot?: string;
+    daytonaImage?: string;
     autoCommitPush: boolean;
     autoCreatePr: boolean;
     vercelProject?: VercelProjectSelection | null;
@@ -72,12 +75,27 @@ export function SessionStarter({
   const { preferences, loading: preferencesLoading } = useUserPreferences();
   const defaultAutoCommitPush = preferences?.autoCommitPush ?? false;
   const defaultAutoCreatePr = preferences?.autoCreatePr ?? false;
+  const defaultSandboxType =
+    preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
   const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
+  const [sandboxOverride, setSandboxOverride] = useState<SandboxType | null>(
+    null,
+  );
+  const [daytonaLaunchMode, setDaytonaLaunchMode] =
+    useState<DaytonaLaunchMode>("blank");
+  const [daytonaSnapshot, setDaytonaSnapshot] = useState("");
+  const [daytonaImage, setDaytonaImage] = useState("");
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
-  const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
-  const sandboxName =
-    SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
+  const sandboxType = sandboxOverride ?? defaultSandboxType;
+  const normalizedDaytonaSnapshot =
+    sandboxType === "daytona" && daytonaLaunchMode === "snapshot"
+      ? daytonaSnapshot.trim() || undefined
+      : undefined;
+  const normalizedDaytonaImage =
+    sandboxType === "daytona" && daytonaLaunchMode === "image"
+      ? daytonaImage.trim() || undefined
+      : undefined;
 
   const shouldLoadVercelProjects =
     mode === "repo" &&
@@ -155,13 +173,23 @@ export function SessionStarter({
     repoProjects.selectedProjectId === null &&
     vercelProjectChoice === undefined;
   const controlsDisabled = isLoading || preferencesLoading;
+  const requiresDaytonaSnapshot =
+    sandboxType === "daytona" &&
+    daytonaLaunchMode === "snapshot" &&
+    !normalizedDaytonaSnapshot;
+  const requiresDaytonaImage =
+    sandboxType === "daytona" &&
+    daytonaLaunchMode === "image" &&
+    !normalizedDaytonaImage;
   const isSubmitDisabled =
     controlsDisabled ||
     (sandboxType === "daytona" && !hasDaytonaApiKey) ||
     (mode === "repo" && (githubConnectionLoading || reconnectRequired)) ||
     !isRepoSelectionComplete ||
     isVercelLookupPending ||
-    requiresVercelChoice;
+    requiresVercelChoice ||
+    requiresDaytonaSnapshot ||
+    requiresDaytonaImage;
   const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
   const effectiveAutoCreatePr = autoCreatePr ?? defaultAutoCreatePr;
   const showVercelProjectSection =
@@ -201,6 +229,8 @@ export function SessionStarter({
           : undefined,
       isNewBranch: mode === "repo" ? isNewBranch : false,
       sandboxType,
+      daytonaSnapshot: normalizedDaytonaSnapshot,
+      daytonaImage: normalizedDaytonaImage,
       autoCommitPush: effectiveAutoCommitPush,
       autoCreatePr: effectiveAutoCommitPush ? effectiveAutoCreatePr : false,
       vercelProject,
@@ -356,37 +386,22 @@ export function SessionStarter({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isSubmitDisabled}
-          className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
-            isSubmitDisabled
-              ? "cursor-not-allowed bg-muted text-muted-foreground"
-              : "bg-foreground text-background hover:bg-foreground/90",
-          )}
-        >
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isLoading ? "Creating session…" : buttonLabel}
-        </button>
-
-        <p className="text-center text-xs text-muted-foreground">
-          Using {sandboxName} sandbox{" "}
-          <span className="text-muted-foreground/60">&middot;</span>{" "}
-          <Link
-            href="/settings/preferences"
-            className="text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/40"
-          >
-            Change
-          </Link>
-        </p>
-        {sandboxType === "daytona" && !hasDaytonaApiKey ? (
-          <p className="text-center text-xs text-amber-600 dark:text-amber-400">
-            Add a Daytona API key in Settings -&gt; Connections to start a
-            Daytona session.
-          </p>
-        ) : null}
+        <SessionStarterLaunchControls
+          sandboxType={sandboxType}
+          controlsDisabled={controlsDisabled}
+          isSubmitDisabled={isSubmitDisabled}
+          isLoading={isLoading}
+          hasDaytonaApiKey={hasDaytonaApiKey}
+          buttonLabel={buttonLabel}
+          onSubmit={handleSubmit}
+          onSandboxTypeChange={setSandboxOverride}
+          daytonaLaunchMode={daytonaLaunchMode}
+          onDaytonaLaunchModeChange={setDaytonaLaunchMode}
+          daytonaSnapshot={daytonaSnapshot}
+          onDaytonaSnapshotChange={setDaytonaSnapshot}
+          daytonaImage={daytonaImage}
+          onDaytonaImageChange={setDaytonaImage}
+        />
       </div>
     </div>
   );

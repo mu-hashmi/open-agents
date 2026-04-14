@@ -55,6 +55,8 @@ export interface ConnectOptions {
   image?: string;
   /** Daytona resource allocation */
   resources?: { cpu?: number; memory?: number; disk?: number };
+  /** Daytona snapshot name to create sandbox from */
+  snapshot?: string;
 }
 
 /**

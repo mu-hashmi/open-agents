@@ -44,6 +44,24 @@ function getDaytonaSessionId(state: unknown): string | null {
   return hasNonEmptyString(sessionId) ? sessionId : null;
 }
 
+export function getDaytonaSnapshot(state: unknown): string | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const snapshot = (state as { snapshot?: unknown }).snapshot;
+  return hasNonEmptyString(snapshot) ? snapshot : null;
+}
+
+export function getDaytonaImage(state: unknown): string | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const image = (state as { image?: unknown }).image;
+  return hasNonEmptyString(image) ? image : null;
+}
+
 function getWorkingDirectory(state: unknown): string | null {
   if (!state || typeof state !== "object") {
     return null;
@@ -85,15 +103,26 @@ export function getSessionSandboxName(sessionId: string): string {
   return `session_${sessionId}`;
 }
 
-export function createPendingSandboxState(params: {
-  sandboxType: "vercel" | "daytona";
-  sessionId: string;
-}): SandboxState {
+export function createPendingSandboxState(
+  params:
+    | {
+        sandboxType: "vercel";
+        sessionId: string;
+      }
+    | {
+        sandboxType: "daytona";
+        sessionId: string;
+        snapshot?: string;
+        image?: string;
+      },
+): SandboxState {
   if (params.sandboxType === "daytona") {
     return {
       type: "daytona",
       sessionId: `session-${params.sessionId}`,
       workingDirectory: DEFAULT_DAYTONA_WORKING_DIRECTORY,
+      ...(params.snapshot ? { snapshot: params.snapshot } : {}),
+      ...(params.image ? { image: params.image } : {}),
     };
   }
 
