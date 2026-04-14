@@ -61,6 +61,11 @@ export function SessionStarterLaunchControls({
     () => snapshots.filter((snapshot) => snapshot.state === "active"),
     [snapshots],
   );
+  const selectedSnapshot = useMemo(
+    () =>
+      snapshots.find((snapshot) => snapshot.name === daytonaSnapshot) ?? null,
+    [daytonaSnapshot, snapshots],
+  );
   const hasSelectableSnapshots = selectableSnapshots.length > 0;
   const snapshotRequired =
     sandboxType === "daytona" &&
@@ -163,17 +168,24 @@ export function SessionStarterLaunchControls({
                 >
                   <SelectTrigger
                     aria-label="Daytona snapshot"
-                    className="w-full"
+                    className="h-10 w-full px-4"
                   >
-                    <SelectValue
-                      placeholder={
-                        snapshotsLoading
-                          ? "Loading snapshots..."
-                          : hasSelectableSnapshots
-                            ? "Select a snapshot"
-                            : "No active snapshots available"
-                      }
-                    />
+                    {selectedSnapshot ? (
+                      <span className="block min-w-0 truncate text-left">
+                        {selectedSnapshot.name}
+                      </span>
+                    ) : (
+                      <SelectValue
+                        className="px-0.5"
+                        placeholder={
+                          snapshotsLoading
+                            ? "Loading snapshots..."
+                            : hasSelectableSnapshots
+                              ? "Select a snapshot"
+                              : "No active snapshots available"
+                        }
+                      />
+                    )}
                   </SelectTrigger>
                   <SelectContent align="start">
                     {snapshots.map((snapshot) => (
