@@ -6,13 +6,17 @@ import {
 } from "@/app/api/sessions/_lib/session-context";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { updateSession } from "@/lib/db/sessions";
+import { getUserDaytonaApiKey } from "@/lib/daytona/api-key";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import {
+  DEFAULT_DAYTONA_AUTO_STOP_MINUTES,
+  DEFAULT_DAYTONA_WORKING_DIRECTORY,
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
 } from "@/lib/sandbox/config";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import {
   buildActiveLifecycleUpdate,
   getNextLifecycleVersion,
@@ -38,7 +42,7 @@ interface CreateSandboxRequest {
   branch?: string;
   isNewBranch?: boolean;
   sessionId?: string;
-  sandboxType?: "vercel";
+  sandboxType?: "vercel" | "daytona";
 }
 
 // async function syncVercelProjectEnvVarsToSandbox(params: {
@@ -110,11 +114,21 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType && body.sandboxType !== "vercel") {
+  if (
+    body.sandboxType &&
+    body.sandboxType !== "vercel" &&
+    body.sandboxType !== "daytona"
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
-  const { repoUrl, branch = "main", isNewBranch = false, sessionId } = body;
+  const {
+    repoUrl,
+    branch = "main",
+    isNewBranch = false,
+    sessionId,
+    sandboxType = "vercel",
+  } = body;
 
   // Get session for auth
   const session = await getServerSession();
@@ -122,7 +136,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const githubToken = await getUserGitHubToken(session.user.id);
+  const [githubToken, daytonaApiKey] = await Promise.all([
+    getUserGitHubToken(session.user.id),
+    sandboxType === "daytona"
+      ? getUserDaytonaApiKey(session.user.id)
+      : Promise.resolve(null),
+  ]);
 
   if (repoUrl) {
     const parsedRepo = parseGitHubUrl(repoUrl);
@@ -183,23 +202,54 @@ export async function POST(req: Request) {
       }
     : undefined;
 
-  const sandbox = await connectSandbox({
-    state: {
-      type: "vercel",
-      ...(sandboxName ? { sandboxName } : {}),
-      source,
-    },
-    options: {
-      githubToken: githubToken ?? undefined,
-      gitUser,
-      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-      ports: DEFAULT_SANDBOX_PORTS,
-      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-      persistent: !!sandboxName,
-      resume: !!sandboxName,
-      createIfMissing: !!sandboxName,
-    },
-  });
+  if (sandboxType === "daytona" && !daytonaApiKey) {
+    return Response.json(
+      {
+        error:
+          "Daytona API key not configured. Go to Settings -> Connections to add it.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const sandbox =
+    sandboxType === "daytona"
+      ? await connectSandbox({
+          state: {
+            type: "daytona",
+            ...(sandboxName ? { sandboxName } : {}),
+            source,
+            sessionId: `session-${sessionId ?? crypto.randomUUID()}`,
+            workingDirectory: DEFAULT_DAYTONA_WORKING_DIRECTORY,
+          },
+          options: {
+            apiKey: daytonaApiKey ?? undefined,
+            env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
+            githubToken: githubToken ?? undefined,
+            gitUser,
+            ports: DEFAULT_SANDBOX_PORTS,
+            resume: !!sandboxName,
+            createIfMissing: !!sandboxName,
+            autoStopInterval: DEFAULT_DAYTONA_AUTO_STOP_MINUTES,
+          },
+        })
+      : await connectSandbox({
+          state: {
+            type: "vercel",
+            ...(sandboxName ? { sandboxName } : {}),
+            source,
+          },
+          options: {
+            githubToken: githubToken ?? undefined,
+            gitUser,
+            timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+            ports: DEFAULT_SANDBOX_PORTS,
+            baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+            persistent: !!sandboxName,
+            resume: !!sandboxName,
+            createIfMissing: !!sandboxName,
+          },
+        });
 
   if (sessionId && sandbox.getState) {
     const nextState = sandbox.getState() as SandboxState;
@@ -228,17 +278,19 @@ export async function POST(req: Request) {
       //   );
       // }
 
-      try {
-        await syncVercelCliAuthForSandbox({
-          userId: session.user.id,
-          sessionRecord,
-          sandbox,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to prepare Vercel CLI auth for session ${sessionRecord.id}:`,
-          error,
-        );
+      if (sandboxType === "vercel") {
+        try {
+          await syncVercelCliAuthForSandbox({
+            userId: session.user.id,
+            sessionRecord,
+            sandbox,
+          });
+        } catch (error) {
+          console.error(
+            `Failed to prepare Vercel CLI auth for session ${sessionRecord.id}:`,
+            error,
+          );
+        }
       }
 
       try {
@@ -261,12 +313,17 @@ export async function POST(req: Request) {
   }
 
   const readyMs = Date.now() - startTime;
+  const resolvedTimeout =
+    sandbox.timeout ??
+    (sandboxType === "daytona"
+      ? DEFAULT_DAYTONA_AUTO_STOP_MINUTES * 60_000
+      : DEFAULT_SANDBOX_TIMEOUT_MS);
 
   return Response.json({
     createdAt: Date.now(),
-    timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-    currentBranch: repoUrl ? branch : undefined,
-    mode: "vercel",
+    timeout: resolvedTimeout,
+    currentBranch: sandbox.currentBranch ?? (repoUrl ? branch : undefined),
+    mode: sandboxType,
     timing: { readyMs },
   });
 }
@@ -311,7 +368,10 @@ export async function DELETE(req: Request) {
   }
 
   // Connect and stop using unified API
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectUserSandbox({
+    userId: authResult.userId,
+    state: sessionRecord.sandboxState,
+  });
   await sandbox.stop();
 
   const clearedState = clearSandboxState(sessionRecord.sandboxState);

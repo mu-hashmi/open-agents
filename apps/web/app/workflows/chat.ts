@@ -502,6 +502,7 @@ export async function runAgentWorkflow(options: Options) {
           workflowRunId,
           options.chatId,
           options.sessionId,
+          options.userId,
           options.modelId,
           options.agentOptions,
           step + 1,
@@ -588,6 +589,8 @@ export async function runAgentWorkflow(options: Options) {
 
     if (canAutoCommit) {
       const hasAutoCommitChanges = await hasAutoCommitChangesStep({
+        userId: options.userId,
+        sessionId: options.sessionId,
         sandboxState,
       });
 
@@ -759,6 +762,7 @@ const runAgentStep = async (
   workflowRunId: string,
   chatId: string,
   sessionId: string,
+  userId: string,
   selectedModelId: string,
   agentOptions: OpenHarnessAgentCallOptions,
   stepNumber: number,
@@ -786,9 +790,35 @@ const runAgentStep = async (
     let stepFinishReasons = existingStepFinishReasons;
     let totalMessageUsage = existingTotalMessageUsage;
 
+    let runtimeAgentOptions = agentOptions;
+    if (agentOptions.sandbox?.state) {
+      const { DEFAULT_SANDBOX_PORTS } = await import("@/lib/sandbox/config");
+      const { connectUserSandbox } =
+        await import("@/lib/sandbox/connect-user-sandbox");
+
+      const sandbox = await connectUserSandbox({
+        userId,
+        state: agentOptions.sandbox.state,
+        options: {
+          ports: DEFAULT_SANDBOX_PORTS,
+        },
+      });
+
+      runtimeAgentOptions = {
+        ...agentOptions,
+        sandbox: {
+          ...agentOptions.sandbox,
+          workingDirectory: sandbox.workingDirectory,
+          currentBranch: sandbox.currentBranch,
+          environmentDetails: sandbox.environmentDetails,
+          instance: sandbox,
+        },
+      };
+    }
+
     const result = await webAgent.stream({
       messages,
-      options: agentOptions,
+      options: runtimeAgentOptions,
       abortSignal: abortController.signal,
     });
 

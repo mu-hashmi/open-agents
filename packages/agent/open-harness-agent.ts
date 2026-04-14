@@ -1,4 +1,4 @@
-import type { SandboxState } from "@open-harness/sandbox";
+import type { Sandbox, SandboxState } from "@open-harness/sandbox";
 import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
@@ -36,6 +36,7 @@ export interface AgentSandboxContext {
   workingDirectory: string;
   currentBranch?: string;
   environmentDetails?: string;
+  instance?: Sandbox;
 }
 
 const callOptionsSchema = z.object({

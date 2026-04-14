@@ -1,5 +1,6 @@
 import type { Sandbox } from "@open-harness/sandbox";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
+import { gateway } from "@open-harness/agent";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
 import { createRepository } from "@/lib/github/client";

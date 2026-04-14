@@ -6,6 +6,7 @@ import type { AutoCreatePrResult } from "@/lib/chat/auto-pr-direct";
 import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
+  getSessionById,
   touchChat,
   updateChat,
   updateSession,
@@ -17,6 +18,7 @@ import {
   buildActiveLifecycleUpdate,
   buildLifecycleActivityUpdate,
 } from "@/lib/sandbox/lifecycle";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import {
   recordWorkflowRun,
@@ -27,6 +29,32 @@ import { recordUsage } from "@/lib/db/usage";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
+
+async function connectWorkflowSandbox(params: {
+  sandboxState: SandboxState;
+  userId?: string;
+  sessionId?: string;
+}): Promise<Sandbox> {
+  let userId = params.userId;
+
+  if (!userId) {
+    if (!params.sessionId) {
+      throw new Error("sessionId is required to connect workflow sandbox");
+    }
+
+    const session = await getSessionById(params.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${params.sessionId}`);
+    }
+
+    userId = session.userId;
+  }
+
+  return connectUserSandbox({
+    userId,
+    state: params.sandboxState,
+  });
+}
 
 type UsageByModel = {
   usage: LanguageModelUsage;
@@ -176,8 +204,10 @@ export async function persistSandboxState(
 ): Promise<void> {
   "use step";
   try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectWorkflowSandbox({
+      sessionId,
+      sandboxState,
+    });
     const currentState = sandbox.getState?.() as SandboxState | undefined;
     if (currentState) {
       await updateSession(sessionId, {
@@ -352,9 +382,11 @@ export async function refreshDiffCache(
 ): Promise<void> {
   "use step";
   try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
     const { computeAndCacheDiff } = await import("@/lib/diff/compute-diff");
-    const sandbox: Sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectWorkflowSandbox({
+      sessionId,
+      sandboxState,
+    });
     await computeAndCacheDiff({ sandbox, sessionId });
   } catch (error) {
     console.error("[workflow] Failed to refresh diff cache:", error);
@@ -362,12 +394,13 @@ export async function refreshDiffCache(
 }
 
 export async function hasAutoCommitChangesStep(params: {
+  userId?: string;
+  sessionId?: string;
   sandboxState: SandboxState;
 }): Promise<boolean> {
   "use step";
   try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const sandbox: Sandbox = await connectSandbox(params.sandboxState);
+    const sandbox = await connectWorkflowSandbox(params);
     const statusResult = await sandbox.exec(
       "git status --porcelain",
       sandbox.workingDirectory,
@@ -395,9 +428,12 @@ export async function runAutoCommitStep(params: {
 }): Promise<AutoCommitResult> {
   "use step";
   try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
     const { performAutoCommit } = await import("@/lib/chat/auto-commit-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
+    const sandbox = await connectWorkflowSandbox({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      sandboxState: params.sandboxState,
+    });
     return await performAutoCommit({
       sandbox,
       userId: params.userId,
@@ -426,9 +462,12 @@ export async function runAutoCreatePrStep(params: {
 }): Promise<AutoCreatePrResult> {
   "use step";
   try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
     const { performAutoCreatePr } = await import("@/lib/chat/auto-pr-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
+    const sandbox = await connectWorkflowSandbox({
+      userId: params.userId,
+      sessionId: params.sessionId,
+      sandboxState: params.sandboxState,
+    });
     const result = await performAutoCreatePr({
       sandbox,
       userId: params.userId,

@@ -31,6 +31,7 @@ import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status"
 import { useSession } from "@/hooks/use-session";
 import { buildGitHubReconnectUrl } from "@/lib/github/connection-status";
 import { fetcher } from "@/lib/swr";
+import { DaytonaConnectionCard } from "./daytona-connection-card";
 
 interface GitHubUserProfile {
   githubId: number;
@@ -195,6 +196,8 @@ export function AccountsSectionSkeleton() {
           </div>
         </div>
       </div>
+
+      <DaytonaConnectionCard />
     </div>
   );
 }
@@ -387,6 +390,8 @@ export function AccountsSection() {
           )}
         </div>
       </div>
+
+      <DaytonaConnectionCard />
     </div>
   );
 }

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/elevenlabs": "^2.0.26",
+    "@ai-sdk/gateway": "catalog:",
     "@ai-sdk/react": "catalog:",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",

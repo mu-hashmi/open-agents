@@ -1,5 +1,5 @@
-import { connectSandbox } from "@open-harness/sandbox";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
+import { gateway } from "@open-harness/agent";
 import {
   ensureForkExists,
   extractGitHubOwnerFromRemoteUrl,
@@ -17,6 +17,7 @@ import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
 import { generatePullRequestContentFromSandbox } from "@/lib/git/pr-content";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -96,7 +97,10 @@ export async function POST(req: Request) {
   }
 
   // 3. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectUserSandbox({
+    userId: session.user.id,
+    state: sessionRecord.sandboxState,
+  });
   const cwd = sandbox.workingDirectory;
   let userToken: string | null = null;
 

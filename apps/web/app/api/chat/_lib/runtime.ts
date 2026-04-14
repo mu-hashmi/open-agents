@@ -1,7 +1,7 @@
 import { discoverSkills } from "@open-harness/agent";
-import { connectSandbox } from "@open-harness/sandbox";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import {
   getVercelCliSandboxSetup,
   syncVercelCliAuthToSandbox,
@@ -11,7 +11,7 @@ import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
 import type { SessionRecord } from "./chat-context";
 
 type DiscoveredSkills = Awaited<ReturnType<typeof discoverSkills>>;
-type ConnectedSandbox = Awaited<ReturnType<typeof connectSandbox>>;
+type ConnectedSandbox = Awaited<ReturnType<typeof connectUserSandbox>>;
 type ActiveSandboxState = NonNullable<SessionRecord["sandboxState"]>;
 
 async function loadSessionSkills(
@@ -49,23 +49,30 @@ export async function createChatRuntime(params: {
     throw new Error("Sandbox state is required to create chat runtime");
   }
 
-  const [githubToken, vercelCliSetup] = await Promise.all([
-    getUserGitHubToken(userId),
-    getVercelCliSandboxSetup({ userId, sessionRecord }).catch((error) => {
-      console.warn(
-        `Failed to prepare Vercel CLI setup for session ${sessionId}:`,
-        error,
-      );
-      return null;
-    }),
-  ]);
+  const githubToken = await getUserGitHubToken(userId);
+  const vercelCliSetup =
+    sandboxState.type === "vercel"
+      ? await getVercelCliSandboxSetup({ userId, sessionRecord }).catch(
+          (error) => {
+            console.warn(
+              `Failed to prepare Vercel CLI setup for session ${sessionId}:`,
+              error,
+            );
+            return null;
+          },
+        )
+      : null;
 
-  const sandbox = await connectSandbox(sandboxState, {
-    githubToken: githubToken ?? undefined,
-    ports: DEFAULT_SANDBOX_PORTS,
+  const sandbox = await connectUserSandbox({
+    userId,
+    state: sandboxState,
+    options: {
+      githubToken: githubToken ?? undefined,
+      ports: DEFAULT_SANDBOX_PORTS,
+    },
   });
 
-  if (vercelCliSetup) {
+  if (sandboxState.type === "vercel" && vercelCliSetup) {
     try {
       await syncVercelCliAuthToSandbox({ sandbox, setup: vercelCliSetup });
     } catch (error) {

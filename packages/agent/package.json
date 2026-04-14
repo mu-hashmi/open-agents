@@ -5,13 +5,15 @@
   "type": "module",
   "main": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./models": "./models.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/gateway": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "@open-harness/sandbox": "workspace:*",
     "ai": "catalog:",

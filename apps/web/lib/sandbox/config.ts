@@ -32,6 +32,8 @@ export const SANDBOX_LIFECYCLE_MIN_SLEEP_MS = 5 * 1000;
  */
 export const DEFAULT_SANDBOX_PORTS = [3000, 5173, 4321, 8000];
 export const CODE_SERVER_PORT = 8000;
+export const DEFAULT_DAYTONA_AUTO_STOP_MINUTES = 30;
+export const DEFAULT_DAYTONA_WORKING_DIRECTORY = "/home/daytona/workspace";
 
 /** Default working directory for sandboxes, used for path display */
 export const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";

@@ -19,6 +19,7 @@ const spies = {
     () =>
       Promise.resolve(createChatMessageIfNotExistsResult) as Promise<unknown>,
   ),
+  getSessionById: mock(() => Promise.resolve({ userId: "user-1" })),
   isFirstChatMessage: mock(
     () => Promise.resolve(isFirstChatMessageResult) as Promise<boolean>,
   ),
@@ -57,6 +58,7 @@ const spies = {
 mock.module("@/lib/db/sessions", () => ({
   compareAndSetChatActiveStreamId: spies.compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists: spies.createChatMessageIfNotExists,
+  getSessionById: spies.getSessionById,
   isFirstChatMessage: spies.isFirstChatMessage,
   touchChat: spies.touchChat,
   updateChat: spies.updateChat,
@@ -74,8 +76,8 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
   buildLifecycleActivityUpdate: spies.buildLifecycleActivityUpdate,
 }));
 
-mock.module("@open-harness/sandbox", () => ({
-  connectSandbox: spies.connectSandbox,
+mock.module("@/lib/sandbox/connect-user-sandbox", () => ({
+  connectUserSandbox: spies.connectSandbox,
 }));
 
 mock.module("@/lib/diff/compute-diff", () => ({
@@ -371,6 +373,7 @@ describe("hasAutoCommitChangesStep", () => {
 
     await expect(
       hasAutoCommitChangesStep({
+        userId: "user-1",
         sandboxState: { type: "vercel" } as never,
       }),
     ).resolves.toBe(false);
@@ -383,6 +386,7 @@ describe("hasAutoCommitChangesStep", () => {
 
     await expect(
       hasAutoCommitChangesStep({
+        userId: "user-1",
         sandboxState: { type: "vercel" } as never,
       }),
     ).resolves.toBe(true);

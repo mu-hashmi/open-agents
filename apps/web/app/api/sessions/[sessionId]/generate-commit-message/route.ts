@@ -1,6 +1,7 @@
-import { connectSandbox } from "@open-harness/sandbox";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
+import { gateway } from "@open-harness/agent";
 import { getSessionById } from "@/lib/db/sessions";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -25,7 +26,10 @@ export async function POST(
     return Response.json({ error: "No active sandbox" }, { status: 400 });
   }
 
-  const sandbox = await connectSandbox(dbSession.sandboxState);
+  const sandbox = await connectUserSandbox({
+    userId: session.user.id,
+    state: dbSession.sandboxState,
+  });
   const cwd = sandbox.workingDirectory;
 
   // Get the diff for commit message generation

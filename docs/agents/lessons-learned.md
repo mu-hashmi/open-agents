@@ -4,6 +4,9 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## General / Tooling
 
+- Treat empty-string env vars as unset for optional integrations. In local `.env` files, values like `REDIS_URL=` still produce `""`, which can make configuration checks disagree unless the helper trims and normalizes them first.
+- Local `next dev` runs do not inherit AI Gateway auth automatically. Model-backed routes should either fail fast with a clear `AI_GATEWAY_API_KEY` / `VERCEL_OIDC_TOKEN` setup error or degrade cleanly for non-critical helpers like title generation.
+- If the app supports direct provider keys and a gateway fallback, resolve models through one shared factory. Patching only the top-level chat route leaves helper generations and subagents instantiating stale provider paths.
 - Skill discovery de-duplicates by first-seen name, so project skill directories must be scanned before user-level directories to allow project overrides.
 - The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the slash-command UI.
 - Glob patterns ending in `**` (for example `"**"` or `"src/**"`) should be treated as recursive, even when `**` is the final segment.

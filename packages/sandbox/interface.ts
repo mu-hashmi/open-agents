@@ -3,7 +3,7 @@ import type { Dirent } from "fs";
 /**
  * The type of sandbox environment.
  */
-export type SandboxType = "cloud";
+export type SandboxType = "cloud" | "daytona";
 
 /**
  * Result of a successful snapshot operation.
@@ -151,9 +151,23 @@ export interface Sandbox {
   stop(): Promise<void>;
 
   /**
+   * Archive the sandbox's persisted state when supported by the provider.
+   */
+  archive?(): Promise<void>;
+
+  /**
    * Extend the sandbox timeout by the specified duration.
    */
   extendTimeout?(additionalMs: number): Promise<{ expiresAt: number }>;
+
+  /**
+   * Resize sandbox resources when supported by the provider.
+   */
+  resize?(resources: {
+    cpu?: number;
+    memory?: number;
+    disk?: number;
+  }): Promise<void>;
 
   /**
    * Create a native Vercel snapshot of the sandbox filesystem.

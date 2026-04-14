@@ -1,9 +1,9 @@
-import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 
 type RouteContext = {
@@ -27,7 +27,7 @@ export type CodeEditorStopResponse = {
 
 const CODE_SERVER_PIDFILE = "/tmp/open-harness-code-server.pid";
 
-type ConnectedSandbox = Awaited<ReturnType<typeof connectSandbox>>;
+type ConnectedSandbox = Awaited<ReturnType<typeof connectUserSandbox>>;
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
@@ -56,8 +56,12 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
     };
   }
 
-  const sandbox = await connectSandbox(sandboxState, {
-    ports: DEFAULT_SANDBOX_PORTS,
+  const sandbox = await connectUserSandbox({
+    userId,
+    state: sandboxState,
+    options: {
+      ports: DEFAULT_SANDBOX_PORTS,
+    },
   });
 
   return {

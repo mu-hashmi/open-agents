@@ -10,6 +10,7 @@ import {
   getVercelProjectLinkByRepo,
   upsertVercelProjectLink,
 } from "@/lib/db/vercel-project-links";
+import { hasUserDaytonaApiKey } from "@/lib/daytona/api-key";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import {
   isValidGitHubRepoName,
@@ -22,6 +23,7 @@ import {
   MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT,
   MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT_ERROR,
 } from "@/lib/managed-template-trial";
+import { createPendingSandboxState } from "@/lib/sandbox/utils";
 import { listMatchingVercelProjects } from "@/lib/vercel/projects";
 import { getUserVercelToken } from "@/lib/vercel/token";
 import {
@@ -36,7 +38,7 @@ interface CreateSessionRequest {
   branch?: string;
   cloneUrl?: string;
   isNewBranch?: boolean;
-  sandboxType?: "vercel";
+  sandboxType?: "vercel" | "daytona";
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   vercelProject?: VercelProjectSelection | null;
@@ -188,7 +190,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType && body.sandboxType !== "vercel") {
+  if (
+    body.sandboxType &&
+    body.sandboxType !== "vercel" &&
+    body.sandboxType !== "daytona"
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
@@ -257,6 +263,19 @@ export async function POST(req: Request) {
     autoCreatePr,
   } = body;
 
+  if (
+    sandboxType === "daytona" &&
+    !(await hasUserDaytonaApiKey(session.user.id))
+  ) {
+    return Response.json(
+      {
+        error:
+          "Configure a Daytona API key in Settings -> Connections before creating a Daytona session.",
+      },
+      { status: 400 },
+    );
+  }
+
   let finalBranch = branch;
   if (isNewBranch) {
     finalBranch = generateBranchName(session.user.username, session.user.name);
@@ -320,9 +339,10 @@ export async function POST(req: Request) {
     const effectiveAutoCommitPush =
       autoCommitPush ?? preferences.autoCommitPush;
     const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
+    const sessionId = nanoid();
     const result = await createSessionWithInitialChat({
       session: {
-        id: nanoid(),
+        id: sessionId,
         userId: session.user.id,
         title,
         status: "running",
@@ -340,7 +360,7 @@ export async function POST(req: Request) {
           ? effectiveAutoCreatePr
           : false,
         globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: { type: sandboxType },
+        sandboxState: createPendingSandboxState({ sandboxType, sessionId }),
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

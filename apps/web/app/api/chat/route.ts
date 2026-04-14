@@ -16,6 +16,10 @@ import { getUserPreferences } from "@/lib/db/user-preferences";
 import { getAllVariants } from "@/lib/model-variants";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
+import {
+  AI_GATEWAY_AUTH_ERROR_MESSAGE,
+  hasAnyModelProviderAuth,
+} from "@/lib/ai-gateway-auth";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isManagedTemplateTrialUser,
@@ -88,6 +92,13 @@ export async function POST(req: Request) {
   const activeSandboxState = sessionRecord.sandboxState;
   if (!activeSandboxState) {
     throw new Error("Sandbox not initialized");
+  }
+
+  if (!hasAnyModelProviderAuth()) {
+    return Response.json(
+      { error: AI_GATEWAY_AUTH_ERROR_MESSAGE },
+      { status: 503 },
+    );
   }
 
   if (isManagedTemplateTrialUser(session, req.url)) {

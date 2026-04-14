@@ -16,9 +16,20 @@ export type { Source, FileEntry, SandboxStatus } from "./types";
 export {
   connectSandbox,
   type SandboxState,
+  type DaytonaSandboxState,
   type ConnectOptions,
   type SandboxConnectConfig,
 } from "./factory";
+
+// daytona
+export {
+  connectDaytona,
+  DaytonaSandbox,
+  type DaytonaSandboxConfig,
+  type DaytonaSandboxConnectConfig,
+  type DaytonaResourcesState,
+  type DaytonaState,
+} from "./daytona";
 
 // vercel
 export {

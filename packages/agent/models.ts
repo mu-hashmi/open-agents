@@ -1,15 +1,11 @@
-import {
-  createGateway,
-  defaultSettingsMiddleware,
-  gateway as aiGateway,
-  wrapLanguageModel,
-  type GatewayModelId,
-  type JSONValue,
-  type LanguageModel,
-} from "ai";
+import { createGateway } from "@ai-sdk/gateway";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { devToolsMiddleware } from "@ai-sdk/devtools";
 import type { AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
 import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import * as ai from "ai";
+import type { GatewayModelId, JSONValue, LanguageModel } from "ai";
 
 // Models with 4.5+ support adaptive thinking with effort control.
 // Older models use the legacy extended thinking API with a budget.
@@ -98,6 +94,111 @@ export interface GatewayOptions {
 
 export type { GatewayModelId, LanguageModel, JSONValue };
 
+function getConfiguredEnvValue(value: string | undefined): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+/**
+ * Return the configured Anthropic API key, if one is available.
+ */
+export function getAnthropicApiKey(): string | null {
+  return getConfiguredEnvValue(process.env.ANTHROPIC_API_KEY);
+}
+
+/**
+ * Whether direct Anthropic access is available for model execution.
+ */
+export function hasAnthropicApiKey(): boolean {
+  return getAnthropicApiKey() !== null;
+}
+
+/**
+ * Return the configured AI Gateway auth value, if one is available.
+ *
+ * The AI SDK accepts either a long-lived API key or a Vercel OIDC token.
+ */
+export function getAiGatewayAuthValue(): string | null {
+  return (
+    getConfiguredEnvValue(process.env.AI_GATEWAY_API_KEY) ??
+    getConfiguredEnvValue(process.env.VERCEL_OIDC_TOKEN)
+  );
+}
+
+/**
+ * Whether AI Gateway auth is available in the current runtime.
+ */
+export function hasAiGatewayAuth(): boolean {
+  return getAiGatewayAuthValue() !== null;
+}
+
+function stripModelProviderPrefix(modelId: string): string {
+  const slashIndex = modelId.indexOf("/");
+  return slashIndex === -1 ? modelId : modelId.slice(slashIndex + 1);
+}
+
+const ANTHROPIC_MODEL_ID_ALIASES: Record<string, string> = {
+  "claude-haiku-4.5": "claude-haiku-4-5",
+  "claude-sonnet-4.5": "claude-sonnet-4-5",
+  "claude-sonnet-4.6": "claude-sonnet-4-6",
+  "claude-opus-4.5": "claude-opus-4-5",
+  "claude-opus-4.6": "claude-opus-4-6",
+};
+
+/**
+ * Normalize app-facing Anthropic aliases to the provider's accepted model IDs.
+ *
+ * The app stores dotted aliases such as `anthropic/claude-opus-4.6`, while the
+ * direct Anthropic provider expects hyphenated versions like `claude-opus-4-6`.
+ */
+export function normalizeAnthropicModelId(modelId: string): string {
+  return ANTHROPIC_MODEL_ID_ALIASES[modelId] ?? modelId;
+}
+
+let sharedAnthropicProvider:
+  | ReturnType<typeof createAnthropic>
+  | null
+  | undefined;
+
+function getAnthropicProvider() {
+  if (sharedAnthropicProvider !== undefined) {
+    return sharedAnthropicProvider;
+  }
+
+  const apiKey = getAnthropicApiKey();
+  if (!apiKey) {
+    sharedAnthropicProvider = null;
+    return sharedAnthropicProvider;
+  }
+
+  sharedAnthropicProvider = createAnthropic({ apiKey });
+  return sharedAnthropicProvider;
+}
+
+function createBaseLanguageModel(
+  modelId: GatewayModelId,
+  config?: GatewayConfig,
+): LanguageModelV3 {
+  if (modelId.startsWith("anthropic/")) {
+    const anthropicProvider = getAnthropicProvider();
+    if (anthropicProvider) {
+      return anthropicProvider(
+        normalizeAnthropicModelId(stripModelProviderPrefix(modelId)),
+      );
+    }
+  }
+
+  const baseGateway = config
+    ? createGateway({ baseURL: config.baseURL, apiKey: config.apiKey })
+    : ai.gateway;
+
+  return baseGateway(modelId);
+}
+
 export function shouldApplyOpenAIReasoningDefaults(modelId: string): boolean {
   return modelId.startsWith("openai/gpt-5");
 }
@@ -171,13 +272,7 @@ export function gateway(
   options: GatewayOptions = {},
 ): LanguageModel {
   const { devtools = false, config, providerOptionsOverrides } = options;
-
-  // Use custom gateway config or default AI SDK gateway
-  const baseGateway = config
-    ? createGateway({ baseURL: config.baseURL, apiKey: config.apiKey })
-    : aiGateway;
-
-  let model: LanguageModel = baseGateway(modelId);
+  let model: LanguageModelV3 = createBaseLanguageModel(modelId, config);
 
   const providerOptions = getProviderOptionsForModel(
     modelId,
@@ -185,17 +280,22 @@ export function gateway(
   );
 
   if (Object.keys(providerOptions).length > 0) {
-    model = wrapLanguageModel({
-      model,
-      middleware: defaultSettingsMiddleware({
-        settings: { providerOptions },
-      }),
-    });
+    if (
+      typeof ai.wrapLanguageModel === "function" &&
+      typeof ai.defaultSettingsMiddleware === "function"
+    ) {
+      model = ai.wrapLanguageModel({
+        model,
+        middleware: ai.defaultSettingsMiddleware({
+          settings: { providerOptions },
+        }),
+      });
+    }
   }
 
   // Apply devtools middleware if requested
-  if (devtools) {
-    model = wrapLanguageModel({ model, middleware: devToolsMiddleware() });
+  if (devtools && typeof ai.wrapLanguageModel === "function") {
+    model = ai.wrapLanguageModel({ model, middleware: devToolsMiddleware() });
   }
 
   return model;

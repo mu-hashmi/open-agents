@@ -1,11 +1,13 @@
 import "server-only";
 
+import { hasAnthropicApiKey } from "@open-harness/agent";
 import { gateway } from "ai";
 import { filterDisabledModels } from "./model-availability";
 import type { AvailableModel, AvailableModelCost } from "./models";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const MODELS_DEV_TIMEOUT_MS = 750;
+const ANTHROPIC_CONTEXT_WINDOW = 200_000;
 
 type GatewayModel = Awaited<
   ReturnType<typeof gateway.getAvailableModels>
@@ -15,6 +17,30 @@ interface ModelsDevMetadata {
   contextWindow?: number;
   cost?: AvailableModelCost;
 }
+
+const DIRECT_ANTHROPIC_MODELS: AvailableModel[] = [
+  {
+    id: "anthropic/claude-haiku-4.5",
+    name: "Claude Haiku 4.5",
+    description: "Fast Anthropic model",
+    modelType: "language",
+    context_window: ANTHROPIC_CONTEXT_WINDOW,
+  },
+  {
+    id: "anthropic/claude-sonnet-4.5",
+    name: "Claude Sonnet 4.5",
+    description: "Balanced Anthropic model",
+    modelType: "language",
+    context_window: ANTHROPIC_CONTEXT_WINDOW,
+  },
+  {
+    id: "anthropic/claude-opus-4.6",
+    name: "Claude Opus 4.6",
+    description: "Highest-capability Anthropic model",
+    modelType: "language",
+    context_window: ANTHROPIC_CONTEXT_WINDOW,
+  },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -145,8 +171,17 @@ async function fetchModelsDevMetadataMap(): Promise<
   }
 }
 
+function normalizeGatewayModel(model: GatewayModel): AvailableModel {
+  return {
+    id: model.id,
+    name: model.name ?? undefined,
+    description: model.description ?? undefined,
+    modelType: model.modelType ?? undefined,
+  };
+}
+
 function addModelsDevMetadata(
-  model: GatewayModel,
+  model: AvailableModel,
   metadataMap: Map<string, ModelsDevMetadata>,
 ): AvailableModel {
   const metadata = metadataMap.get(model.id);
@@ -173,9 +208,15 @@ function addModelsDevMetadata(
 export async function fetchAvailableLanguageModels(): Promise<
   AvailableModel[]
 > {
+  if (hasAnthropicApiKey()) {
+    return filterDisabledModels(DIRECT_ANTHROPIC_MODELS);
+  }
+
   const { models } = await gateway.getAvailableModels();
   return filterDisabledModels(
-    models.filter((model) => model.modelType === "language"),
+    models
+      .filter((model) => model.modelType === "language")
+      .map(normalizeGatewayModel),
   );
 }
 

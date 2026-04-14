@@ -33,6 +33,7 @@ import { type ModelOption, withMissingModelOption } from "@/lib/model-options";
 import {
   clearSandboxResumeState,
   clearSandboxState,
+  createPendingSandboxState,
   hasPausedSandboxState,
   hasRuntimeSandboxState as hasRuntimeSandboxStateValue,
 } from "@/lib/sandbox/utils";
@@ -41,7 +42,7 @@ import {
   useSessionChatRuntime,
 } from "./hooks/use-session-chat-runtime";
 
-const KNOWN_SANDBOX_TYPES = ["vercel"] as const;
+const KNOWN_SANDBOX_TYPES = ["vercel", "daytona"] as const;
 type KnownSandboxType = (typeof KNOWN_SANDBOX_TYPES)[number];
 
 function asKnownSandboxType(value: unknown): KnownSandboxType | null {
@@ -750,7 +751,10 @@ export function SessionChatProvider({
       if (!prev.sandboxState) {
         return {
           ...prev,
-          sandboxState: { type: sandboxType } as SandboxState,
+          sandboxState: createPendingSandboxState({
+            sandboxType,
+            sessionId: prev.id,
+          }),
         };
       }
       return {
@@ -765,12 +769,8 @@ export function SessionChatProvider({
 
   const preferredSandboxType =
     asKnownSandboxType(sessionRecord.sandboxState?.type) ?? "vercel";
-  const supportsDiff =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
-  const supportsRepoCreation =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
+  const supportsDiff = true;
+  const supportsRepoCreation = true;
   const hasRuntimeSandboxState = hasRuntimeSandboxStateValue(
     sessionRecord.sandboxState,
   );

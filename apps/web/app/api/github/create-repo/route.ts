@@ -1,8 +1,8 @@
-import { connectSandbox } from "@open-harness/sandbox";
 import { runCreateRepoWorkflow } from "@/app/api/github/create-repo/_lib/create-repo-workflow";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
 import { getUserGitHubToken } from "@/lib/github/user-token";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -87,7 +87,10 @@ export async function POST(req: Request) {
   }
 
   // 5. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectUserSandbox({
+    userId: session.user.id,
+    state: sessionRecord.sandboxState,
+  });
   const cwd = sandbox.workingDirectory;
 
   const workflowResult = await runCreateRepoWorkflow({

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Plus, Search, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { type ThemePreference, useTheme } from "@/app/providers";
 import {
   DEFAULT_SANDBOX_TYPE,
@@ -22,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { ModelCombobox } from "@/components/model-combobox";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useSession } from "@/hooks/use-session";
+import { useDaytonaApiKeyStatus } from "@/hooks/use-daytona-api-key-status";
 import {
   type DiffMode,
   useUserPreferences,
@@ -38,6 +40,7 @@ import {
 
 const SANDBOX_OPTIONS: Array<{ id: SandboxType; name: string }> = [
   { id: "vercel", name: "Vercel" },
+  { id: "daytona", name: "Daytona" },
 ];
 
 const THEME_OPTIONS: Array<{ id: ThemePreference; name: string }> = [
@@ -115,6 +118,7 @@ export function PreferencesSection() {
   const { theme, setTheme } = useTheme();
   const { session } = useSession();
   const { preferences, loading, updatePreferences } = useUserPreferences();
+  const { hasApiKey: hasDaytonaApiKey } = useDaytonaApiKeyStatus();
   const { modelOptions, loading: modelOptionsLoading } = useModelOptions();
   const [isSaving, setIsSaving] = useState(false);
   const [globalSkillSource, setGlobalSkillSource] = useState("");
@@ -418,12 +422,28 @@ export function PreferencesSection() {
                 </SelectTrigger>
                 <SelectContent>
                   {SANDBOX_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
+                    <SelectItem
+                      key={option.id}
+                      value={option.id}
+                      disabled={option.id === "daytona" && !hasDaytonaApiKey}
+                    >
                       {option.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {!hasDaytonaApiKey ? (
+                <p className="text-xs text-muted-foreground">
+                  Add a Daytona API key in{" "}
+                  <Link
+                    href="/settings/connections"
+                    className="underline decoration-muted-foreground/40 underline-offset-2"
+                  >
+                    Connections
+                  </Link>{" "}
+                  before selecting Daytona.
+                </p>
+              ) : null}
             </div>
 
             <div className="grid gap-2">

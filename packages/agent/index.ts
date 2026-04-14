@@ -1,4 +1,12 @@
-export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
+export {
+  getAiGatewayAuthValue,
+  getAnthropicApiKey,
+  hasAiGatewayAuth,
+  hasAnthropicApiKey,
+  type GatewayConfig,
+  type GatewayOptions,
+  gateway,
+} from "./models";
 export type {
   AgentModelSelection,
   AgentSandboxContext,

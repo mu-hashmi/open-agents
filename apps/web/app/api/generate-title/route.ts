@@ -1,4 +1,5 @@
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
+import { gateway } from "@open-harness/agent/models";
 import { z } from "zod";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -65,10 +66,7 @@ export async function POST(req: Request) {
   const title = await generateSessionTitle(message);
 
   if (!title) {
-    return Response.json(
-      { error: "Failed to generate title" },
-      { status: 500 },
-    );
+    return Response.json({ title: null });
   }
 
   return Response.json({ title });

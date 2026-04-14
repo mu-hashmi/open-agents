@@ -1,4 +1,5 @@
 import { getServerSession } from "@/lib/session/get-server-session";
+import { hasUserDaytonaApiKey } from "@/lib/daytona/api-key";
 import {
   getUserPreferences,
   type DiffMode,
@@ -48,12 +49,25 @@ export async function PATCH(req: Request) {
   }
 
   if (body.defaultSandboxType !== undefined) {
-    const validTypes = ["vercel"];
+    const validTypes = ["vercel", "daytona"];
     if (
       typeof body.defaultSandboxType !== "string" ||
       !validTypes.includes(body.defaultSandboxType)
     ) {
       return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
+    }
+
+    if (
+      body.defaultSandboxType === "daytona" &&
+      !(await hasUserDaytonaApiKey(session.user.id))
+    ) {
+      return Response.json(
+        {
+          error:
+            "Configure a Daytona API key in Settings -> Connections before selecting Daytona.",
+        },
+        { status: 400 },
+      );
     }
   }
 

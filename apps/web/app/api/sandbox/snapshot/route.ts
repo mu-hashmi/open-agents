@@ -24,6 +24,7 @@ import {
   hasRuntimeSandboxState,
   isSandboxNotFoundError,
 } from "@/lib/sandbox/utils";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 
 interface CreateSnapshotRequest {
   sessionId: string;
@@ -73,7 +74,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: authResult.userId,
+      state: sandboxState,
+    });
     await sandbox.stop();
 
     const clearedState = clearSandboxState(sessionRecord.sandboxState);
@@ -135,16 +139,6 @@ export async function PUT(req: Request) {
   const { sessionRecord } = sessionContext;
   const sandboxType = sessionRecord.sandboxState?.type ?? "vercel";
 
-  if (sandboxType !== "vercel") {
-    return Response.json(
-      {
-        error:
-          "Snapshot restoration is only supported for the current cloud sandbox provider",
-      },
-      { status: 400 },
-    );
-  }
-
   if (hasRuntimeSandboxState(sessionRecord.sandboxState)) {
     const restoredFrom =
       getResumableSandboxName(sessionRecord.sandboxState) ??
@@ -175,21 +169,24 @@ export async function PUT(req: Request) {
     );
   }
 
-  const restoreLegacySnapshot = () =>
-    connectSandbox(
-      {
-        type: sandboxType,
-        sandboxName: getSessionSandboxName(sessionId),
-        snapshotId: legacySnapshotId ?? undefined,
-      },
-      {
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        resume: true,
-        createIfMissing: true,
-        persistent: true,
-      },
-    );
+  const restoreLegacySnapshot =
+    sandboxType === "vercel" && legacySnapshotId
+      ? () =>
+          connectSandbox(
+            {
+              type: sandboxType,
+              sandboxName: getSessionSandboxName(sessionId),
+              snapshotId: legacySnapshotId,
+            },
+            {
+              timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+              ports: DEFAULT_SANDBOX_PORTS,
+              resume: true,
+              createIfMissing: true,
+              persistent: true,
+            },
+          )
+      : null;
 
   try {
     let restoredFrom = legacySnapshotId ?? persistentSandboxName;
@@ -198,18 +195,22 @@ export async function PUT(req: Request) {
       ? await (async () => {
           try {
             restoredFrom = persistentSandboxName;
-            return await connectSandbox(
-              { type: sandboxType, sandboxName: persistentSandboxName },
-              {
+            return await connectUserSandbox({
+              userId: authResult.userId,
+              state: {
+                ...(sessionRecord.sandboxState ?? { type: sandboxType }),
+                sandboxName: persistentSandboxName,
+              } as NonNullable<typeof sessionRecord.sandboxState>,
+              options: {
                 timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
                 ports: DEFAULT_SANDBOX_PORTS,
                 resume: true,
               },
-            );
+            });
           } catch (error) {
             const message =
               error instanceof Error ? error.message : String(error);
-            if (!legacySnapshotId || !isSandboxNotFoundError(message)) {
+            if (!restoreLegacySnapshot || !isSandboxNotFoundError(message)) {
               throw error;
             }
 
@@ -217,7 +218,11 @@ export async function PUT(req: Request) {
             return restoreLegacySnapshot();
           }
         })()
-      : await restoreLegacySnapshot();
+      : restoreLegacySnapshot
+        ? await restoreLegacySnapshot()
+        : (() => {
+            throw new Error("No sandbox available for resume");
+          })();
 
     const newState = sandbox.getState?.();
     const restoredState = (newState ?? {

@@ -1,10 +1,10 @@
 import { posix } from "node:path";
-import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { updateSession } from "@/lib/db/sessions";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { buildHibernatedLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import {
   clearUnavailableSandboxState,
@@ -87,7 +87,10 @@ export async function GET(req: Request, context: RouteContext) {
   }
 
   try {
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: authResult.userId,
+      state: sandboxState,
+    });
     const fullPath = posix.join(sandbox.workingDirectory, filePath);
     const stats = await sandbox.stat(fullPath);
 

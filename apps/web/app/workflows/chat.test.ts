@@ -14,6 +14,13 @@ const spies = {
   refreshDiffCache: mock(() => Promise.resolve()),
   refreshLifecycleActivity: mock(() => Promise.resolve()),
   hasAutoCommitChangesStep: mock(() => Promise.resolve(true)),
+  connectUserSandbox: mock(() =>
+    Promise.resolve({
+      workingDirectory: "/vercel/sandbox",
+      currentBranch: "main",
+      environmentDetails: undefined,
+    }),
+  ),
   runAutoCommitStep: mock(() =>
     Promise.resolve({ committed: false, pushed: false }),
   ),
@@ -108,6 +115,10 @@ mock.module("workflow/api", () => ({
 }));
 
 mock.module("./chat-post-finish", () => spies);
+
+mock.module("@/lib/sandbox/connect-user-sandbox", () => ({
+  connectUserSandbox: spies.connectUserSandbox,
+}));
 
 mock.module("@/app/config", () => ({
   webAgent: {

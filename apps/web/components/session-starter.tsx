@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDaytonaApiKeyStatus } from "@/hooks/use-daytona-api-key-status";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -67,6 +68,7 @@ export function SessionStarter({
     useGitHubConnectionStatus({
       enabled: hasGitHub,
     });
+  const { hasApiKey: hasDaytonaApiKey } = useDaytonaApiKeyStatus();
   const { preferences, loading: preferencesLoading } = useUserPreferences();
   const defaultAutoCommitPush = preferences?.autoCommitPush ?? false;
   const defaultAutoCreatePr = preferences?.autoCreatePr ?? false;
@@ -155,6 +157,7 @@ export function SessionStarter({
   const controlsDisabled = isLoading || preferencesLoading;
   const isSubmitDisabled =
     controlsDisabled ||
+    (sandboxType === "daytona" && !hasDaytonaApiKey) ||
     (mode === "repo" && (githubConnectionLoading || reconnectRequired)) ||
     !isRepoSelectionComplete ||
     isVercelLookupPending ||
@@ -378,6 +381,12 @@ export function SessionStarter({
             Change
           </Link>
         </p>
+        {sandboxType === "daytona" && !hasDaytonaApiKey ? (
+          <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+            Add a Daytona API key in Settings -&gt; Connections to start a
+            Daytona session.
+          </p>
+        ) : null}
       </div>
     </div>
   );

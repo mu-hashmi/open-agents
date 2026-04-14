@@ -136,6 +136,7 @@ import {
   type SandboxCreateErrorDetails,
 } from "./sandbox-create";
 import { SandboxCreateErrorBanner } from "./sandbox-create-error-banner";
+import { SandboxResizeControls } from "./sandbox-resize-controls";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 import "streamdown/styles.css";
 
@@ -2754,6 +2755,10 @@ export function SessionChatContent({
 
   const hasRepo = Boolean(session.cloneUrl);
   const hasExistingPr = session.prNumber != null;
+  const daytonaResources =
+    session.sandboxState?.type === "daytona"
+      ? (session.sandboxState.resources ?? null)
+      : null;
   const previewLookupBranch =
     gitStatus?.branch && gitStatus.branch !== "HEAD"
       ? gitStatus.branch
@@ -3028,6 +3033,13 @@ export function SessionChatContent({
         showHeaderActions &&
         createPortal(
           <div className="flex items-center gap-1">
+            {preferredSandboxType === "daytona" ? (
+              <SandboxResizeControls
+                sessionId={session.id}
+                resources={daytonaResources}
+                disabled={!isSandboxActive}
+              />
+            ) : null}
             {canRunDevServer && (
               <>
                 <Tooltip>

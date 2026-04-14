@@ -28,6 +28,7 @@ export const users = pgTable(
     email: text("email"),
     name: text("name"),
     avatarUrl: text("avatar_url"),
+    daytonaApiKey: text("daytona_api_key"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     tokenExpiresAt: timestamp("token_expires_at"),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -374,7 +375,7 @@ export const userPreferences = pgTable("user_preferences", {
   ),
   defaultSubagentModelId: text("default_subagent_model_id"),
   defaultSandboxType: text("default_sandbox_type", {
-    enum: ["vercel"],
+    enum: ["vercel", "daytona"],
   }).default("vercel"),
   defaultDiffMode: text("default_diff_mode", {
     enum: ["unified", "split"],

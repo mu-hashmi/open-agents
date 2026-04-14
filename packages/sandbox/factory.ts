@@ -1,5 +1,7 @@
 import type { Sandbox, SandboxHooks } from "./interface";
 import type { SandboxStatus } from "./types";
+import { connectDaytona } from "./daytona/connect";
+import type { DaytonaState } from "./daytona/state";
 import { connectVercel } from "./vercel/connect";
 import type { VercelState } from "./vercel/state";
 
@@ -10,7 +12,10 @@ export type { SandboxStatus };
  * Unified sandbox state type.
  * Use `type` discriminator to determine which sandbox implementation to use.
  */
-export type SandboxState = { type: "vercel" } & VercelState;
+export type DaytonaSandboxState = { type: "daytona" } & DaytonaState;
+export type SandboxState =
+  | ({ type: "vercel" } & VercelState)
+  | DaytonaSandboxState;
 
 /**
  * Base connect options for all sandbox types.
@@ -30,6 +35,8 @@ export interface ConnectOptions {
   ports?: number[];
   /** Snapshot ID used as the base image for new sandboxes */
   baseSnapshotId?: string;
+  /** Daytona API key (required for Daytona sandboxes) */
+  apiKey?: string;
   /** Whether to resume a stopped persistent sandbox session */
   resume?: boolean;
   /** Whether to create the named sandbox when it does not already exist */
@@ -42,15 +49,25 @@ export interface ConnectOptions {
    * Skip git init in an empty workspace (e.g. when refreshing a Vercel base snapshot).
    */
   skipGitWorkspaceBootstrap?: boolean;
+  /** Daytona auto-stop interval in minutes */
+  autoStopInterval?: number;
+  /** Custom Daytona image */
+  image?: string;
+  /** Daytona resource allocation */
+  resources?: { cpu?: number; memory?: number; disk?: number };
 }
 
 /**
  * Configuration for connecting to a sandbox.
  */
 export type SandboxConnectConfig = {
-  state: { type: "vercel" } & VercelState;
+  state: SandboxState;
   options?: ConnectOptions;
 };
+
+function assertNever(value: never): never {
+  throw new Error(`Unknown sandbox type: ${String(value)}`);
+}
 
 /**
  * Connect to a sandbox based on the provided configuration.
@@ -67,9 +84,23 @@ export async function connectSandbox(
 
   if (isNewApi) {
     const config = configOrState as SandboxConnectConfig;
-    return connectVercel(config.state, config.options);
+    switch (config.state.type) {
+      case "vercel":
+        return connectVercel(config.state, config.options);
+      case "daytona":
+        return connectDaytona(config.state, config.options);
+      default:
+        return assertNever(config.state);
+    }
   }
 
   const state = configOrState as SandboxState;
-  return connectVercel(state, legacyOptions);
+  switch (state.type) {
+    case "vercel":
+      return connectVercel(state, legacyOptions);
+    case "daytona":
+      return connectDaytona(state, legacyOptions);
+    default:
+      return assertNever(state);
+  }
 }

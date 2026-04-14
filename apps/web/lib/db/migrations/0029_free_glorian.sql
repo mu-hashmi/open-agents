@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "daytona_api_key" text;

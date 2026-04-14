@@ -1,10 +1,10 @@
 import path from "node:path";
-import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 
 type RouteContext = {
@@ -33,7 +33,7 @@ type DevFramework =
   | "nuxt"
   | "custom";
 
-type ConnectedSandbox = Awaited<ReturnType<typeof connectSandbox>>;
+type ConnectedSandbox = Awaited<ReturnType<typeof connectUserSandbox>>;
 
 interface PackageManifest {
   packageManager?: string;
@@ -885,8 +885,12 @@ async function connectDevServerSandboxForSession(
     };
   }
 
-  const sandbox = await connectSandbox(sandboxState, {
-    ports: DEFAULT_SANDBOX_PORTS,
+  const sandbox = await connectUserSandbox({
+    userId,
+    state: sandboxState,
+    options: {
+      ports: DEFAULT_SANDBOX_PORTS,
+    },
   });
 
   return {

@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
@@ -9,6 +8,7 @@ import {
   DiffComputationError,
 } from "@/lib/diff/compute-diff";
 import { updateSession } from "@/lib/db/sessions";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { buildHibernatedLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import {
   clearUnavailableSandboxState,
@@ -47,7 +47,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   }
 
   try {
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: authResult.userId,
+      state: sandboxState,
+    });
     const response = await computeAndCacheDiff({ sandbox, sessionId });
     return Response.json(response);
   } catch (error) {

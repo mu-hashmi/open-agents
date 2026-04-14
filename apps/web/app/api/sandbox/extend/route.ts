@@ -1,10 +1,11 @@
-import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
+import type { SandboxState } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { updateSession } from "@/lib/db/sessions";
 import { EXTEND_TIMEOUT_DURATION_MS } from "@/lib/sandbox/config";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
   buildActiveLifecycleUpdate,
@@ -52,7 +53,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: authResult.userId,
+      state: sandboxState,
+    });
     if (!sandbox.extendTimeout) {
       return Response.json(
         { error: "Extend timeout not supported by this sandbox type" },

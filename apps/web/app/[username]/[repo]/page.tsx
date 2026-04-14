@@ -9,6 +9,7 @@ import { getUserPreferences } from "@/lib/db/user-preferences";
 import { getRandomCityName } from "@/lib/random-city";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { createPendingSandboxState } from "@/lib/sandbox/utils";
 
 interface RepoPageProps {
   params: Promise<{ username: string; repo: string }>;
@@ -48,6 +49,7 @@ async function fetchRepoInfo(
 
 export default async function RepoPage({ params }: RepoPageProps) {
   const { username, repo } = await params;
+  const sessionId = nanoid();
 
   // Auth check -- redirect to sign-in, preserving the URL for return
   const session = await getServerSession();
@@ -97,7 +99,7 @@ export default async function RepoPage({ params }: RepoPageProps) {
 
   const result = await createSessionWithInitialChat({
     session: {
-      id: nanoid(),
+      id: sessionId,
       userId: session.user.id,
       title,
       status: "running",
@@ -114,7 +116,10 @@ export default async function RepoPage({ params }: RepoPageProps) {
       autoCreatePrOverride: preferences.autoCommitPush
         ? preferences.autoCreatePr
         : false,
-      sandboxState: { type: preferences.defaultSandboxType },
+      sandboxState: createPendingSandboxState({
+        sandboxType: preferences.defaultSandboxType,
+        sessionId,
+      }),
       lifecycleState: "provisioning",
       lifecycleVersion: 0,
     },

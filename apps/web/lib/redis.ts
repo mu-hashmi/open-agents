@@ -57,8 +57,20 @@ function applyRedisQueryOptions(
   }
 }
 
+function getConfiguredRedisUrl(value: string | undefined): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export function getRedisUrl(): string | null {
-  return process.env.REDIS_URL ?? process.env.KV_URL ?? null;
+  return (
+    getConfiguredRedisUrl(process.env.REDIS_URL) ??
+    getConfiguredRedisUrl(process.env.KV_URL)
+  );
 }
 
 export function getRedisConnectionOptions(url: string): RedisConnectionOptions {

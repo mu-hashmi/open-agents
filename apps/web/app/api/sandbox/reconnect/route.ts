@@ -1,4 +1,4 @@
-import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
+import type { SandboxState } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -16,6 +16,7 @@ import {
   hasRuntimeSandboxState,
   isSandboxUnavailableError,
 } from "@/lib/sandbox/utils";
+import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 
 export type ReconnectStatus =
   | "connected"
@@ -108,7 +109,10 @@ export async function GET(req: Request): Promise<Response> {
 
   // Connect and probe the persisted runtime sandbox state.
   try {
-    const sandbox = await connectSandbox(state as SandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: authResult.userId,
+      state: state as SandboxState,
+    });
     const probe = await sandbox.exec("pwd", sandbox.workingDirectory, 15_000);
     if (!probe.success) {
       const probeError =

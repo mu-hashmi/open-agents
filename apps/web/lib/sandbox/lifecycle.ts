@@ -1,6 +1,6 @@
 import "server-only";
 
-import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
+import type { SandboxState } from "@open-harness/sandbox";
 import {
   getChatsBySessionId,
   getSessionById,
@@ -15,6 +15,7 @@ import {
   clearSandboxState,
   getPersistentSandboxName,
 } from "./utils";
+import { connectUserSandbox } from "./connect-user-sandbox";
 
 export type SandboxLifecycleState =
   | "provisioning"
@@ -184,10 +185,6 @@ export async function evaluateSandboxLifecycle(
   if (!canOperateOnSandbox(sandboxState)) {
     return { action: "skipped", reason: "sandbox-not-operable" };
   }
-  if (sandboxState.type !== "vercel") {
-    return { action: "skipped", reason: "unsupported-sandbox-type" };
-  }
-
   const nowMs = Date.now();
   const dueAtMs = getLifecycleDueAtMs(session);
   const isInactive = nowMs >= dueAtMs;
@@ -206,7 +203,10 @@ export async function evaluateSandboxLifecycle(
       lifecycleError: null,
     });
 
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: session.userId,
+      state: sandboxState,
+    });
 
     if (await hasActiveStreamForSession(sessionId)) {
       await restoreActiveLifecycleState(sessionId, sandboxState);

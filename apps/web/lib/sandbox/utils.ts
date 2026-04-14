@@ -1,5 +1,8 @@
 import type { SandboxState } from "@open-harness/sandbox";
-import { SANDBOX_EXPIRES_BUFFER_MS } from "./config";
+import {
+  DEFAULT_DAYTONA_WORKING_DIRECTORY,
+  SANDBOX_EXPIRES_BUFFER_MS,
+} from "./config";
 
 function hasNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -14,6 +17,15 @@ function getSandboxExpiresAt(state: unknown): number | undefined {
   return typeof expiresAt === "number" ? expiresAt : undefined;
 }
 
+function getSandboxType(state: unknown): string | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const sandboxType = (state as { type?: unknown }).type;
+  return typeof sandboxType === "string" ? sandboxType : null;
+}
+
 function getLegacySandboxId(state: unknown): string | null {
   if (!state || typeof state !== "object") {
     return null;
@@ -23,8 +35,69 @@ function getLegacySandboxId(state: unknown): string | null {
   return hasNonEmptyString(sandboxId) ? sandboxId : null;
 }
 
+function getDaytonaSessionId(state: unknown): string | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const sessionId = (state as { sessionId?: unknown }).sessionId;
+  return hasNonEmptyString(sessionId) ? sessionId : null;
+}
+
+function getWorkingDirectory(state: unknown): string | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const workingDirectory = (state as { workingDirectory?: unknown })
+    .workingDirectory;
+  return hasNonEmptyString(workingDirectory) ? workingDirectory : null;
+}
+
+function getDaytonaResources(
+  state: unknown,
+): { cpu: number; memory: number; disk: number } | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  const resources = (state as { resources?: unknown }).resources;
+  if (!resources || typeof resources !== "object") {
+    return null;
+  }
+
+  const cpu = (resources as { cpu?: unknown }).cpu;
+  const memory = (resources as { memory?: unknown }).memory;
+  const disk = (resources as { disk?: unknown }).disk;
+
+  if (
+    typeof cpu !== "number" ||
+    typeof memory !== "number" ||
+    typeof disk !== "number"
+  ) {
+    return null;
+  }
+
+  return { cpu, memory, disk };
+}
+
 export function getSessionSandboxName(sessionId: string): string {
   return `session_${sessionId}`;
+}
+
+export function createPendingSandboxState(params: {
+  sandboxType: "vercel" | "daytona";
+  sessionId: string;
+}): SandboxState {
+  if (params.sandboxType === "daytona") {
+    return {
+      type: "daytona",
+      sessionId: `session-${params.sessionId}`,
+      workingDirectory: DEFAULT_DAYTONA_WORKING_DIRECTORY,
+    };
+  }
+
+  return { type: "vercel" };
 }
 
 export function getPersistentSandboxName(state: unknown): string | null {
@@ -41,6 +114,13 @@ export function getResumableSandboxName(state: unknown): string | null {
 }
 
 export function hasResumableSandboxState(state: unknown): boolean {
+  if (getSandboxType(state) === "daytona") {
+    return (
+      getResumableSandboxName(state) !== null &&
+      getDaytonaSessionId(state) !== null
+    );
+  }
+
   return getResumableSandboxName(state) !== null;
 }
 
@@ -55,6 +135,19 @@ export function isSandboxActive(
   state: SandboxState | null | undefined,
 ): state is SandboxState {
   if (!state) return false;
+
+  if (state.type === "daytona") {
+    const expiresAt = getSandboxExpiresAt(state);
+    if (expiresAt === undefined) {
+      return false;
+    }
+
+    if (Date.now() >= expiresAt - SANDBOX_EXPIRES_BUFFER_MS) {
+      return false;
+    }
+
+    return hasRuntimeState(state);
+  }
 
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
@@ -83,6 +176,19 @@ export function canOperateOnSandbox(
  */
 export function hasRuntimeSandboxState(state: unknown): boolean {
   if (!state || typeof state !== "object") return false;
+
+  if (getSandboxType(state) === "daytona") {
+    const expiresAt = getSandboxExpiresAt(state);
+    if (expiresAt === undefined) {
+      return false;
+    }
+
+    return (
+      getResumableSandboxName(state) !== null &&
+      getDaytonaSessionId(state) !== null &&
+      getWorkingDirectory(state) !== null
+    );
+  }
 
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
@@ -116,6 +222,17 @@ export function isSandboxUnavailableError(message: string): boolean {
 }
 
 function hasRuntimeState(state: SandboxState): boolean {
+  if (state.type === "daytona") {
+    const expiresAt = getSandboxExpiresAt(state);
+    if (expiresAt === undefined) {
+      return false;
+    }
+
+    return (
+      hasResumableSandboxState(state) && getWorkingDirectory(state) !== null
+    );
+  }
+
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
     return false;
@@ -131,6 +248,27 @@ export function clearSandboxState(
   state: SandboxState | null | undefined,
 ): SandboxState | null {
   if (!state) return null;
+
+  if (state.type === "daytona") {
+    const sandboxName = getPersistentSandboxName(state);
+    const sandboxId = sandboxName ? null : getLegacySandboxId(state);
+    const sessionId = getDaytonaSessionId(state);
+    const workingDirectory = getWorkingDirectory(state);
+    const resources = getDaytonaResources(state);
+
+    if (!sessionId || !workingDirectory) {
+      return { type: "daytona" } as SandboxState;
+    }
+
+    return {
+      type: "daytona",
+      ...(sandboxName ? { sandboxName } : {}),
+      ...(sandboxId ? { sandboxId } : {}),
+      sessionId,
+      workingDirectory,
+      ...(resources ? { resources } : {}),
+    } as SandboxState;
+  }
 
   const sandboxName = getPersistentSandboxName(state);
   const sandboxId = sandboxName ? null : getLegacySandboxId(state);

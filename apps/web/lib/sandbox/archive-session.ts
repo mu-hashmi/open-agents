@@ -1,12 +1,12 @@
 import "server-only";
 
-import { connectSandbox } from "@open-harness/sandbox";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
 import {
   findPullRequestByBranch,
   getPullRequestStatus,
 } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
+import { connectUserSandbox } from "./connect-user-sandbox";
 import { canOperateOnSandbox, clearSandboxState } from "./utils";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
@@ -50,7 +50,10 @@ async function refreshArchiveGitState(
   }
 
   try {
-    const sandbox = await connectSandbox(currentSession.sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: currentSession.userId,
+      state: currentSession.sandboxState,
+    });
     const cwd = sandbox.workingDirectory;
     const branchResult = await sandbox.exec(
       "git symbolic-ref --short HEAD",
@@ -152,8 +155,14 @@ async function finalizeArchivedSessionSandbox(
       return;
     }
 
-    const sandbox = await connectSandbox(archivedSession.sandboxState);
+    const sandbox = await connectUserSandbox({
+      userId: archivedSession.userId,
+      state: archivedSession.sandboxState,
+    });
     await sandbox.stop();
+    if (sandbox.archive) {
+      await sandbox.archive();
+    }
 
     await updateSession(sessionId, {
       snapshotUrl: null,

@@ -74,6 +74,35 @@ VERCEL_APP_CLIENT_SECRET=
 
 Without these, the site can deploy, but Vercel sign-in will not work.
 
+### Required for model generation
+
+The chat workflow and several AI-powered helpers need a model provider. The
+preferred local path for this fork is direct Anthropic access:
+
+```env
+ANTHROPIC_API_KEY=
+```
+
+You can also use Vercel AI Gateway instead:
+
+```env
+AI_GATEWAY_API_KEY=
+```
+
+Or link the project to Vercel and pull an OIDC token into your local env:
+
+```bash
+vercel link
+vercel env pull
+```
+
+Direct Anthropic avoids Gateway credit/account restrictions. Gateway remains
+available as a fallback for hosted setups or non-Anthropic providers.
+
+Vercel documents the Gateway auth paths here:
+- https://vercel.com/docs/ai-gateway/authentication
+- https://vercel.com/docs/ai-gateway/authentication-and-byok
+
 ### Required for GitHub repo access, pushes, and PRs
 
 If you want users to connect GitHub, install the app on repos/orgs, clone private repos, push branches, or open PRs, add these GitHub App values:
@@ -90,6 +119,8 @@ GITHUB_WEBHOOK_SECRET=
 ### Optional
 
 ```env
+ANTHROPIC_API_KEY=
+AI_GATEWAY_API_KEY=
 REDIS_URL=
 KV_URL=
 VERCEL_PROJECT_PRODUCTION_URL=
@@ -98,6 +129,8 @@ VERCEL_SANDBOX_BASE_SNAPSHOT_ID=
 ELEVENLABS_API_KEY=
 ```
 
+- `ANTHROPIC_API_KEY`: preferred local model provider for Anthropic-backed chat and helper generation.
+- `AI_GATEWAY_API_KEY`: optional Gateway auth if you want to keep using Vercel AI Gateway, or if you need non-Anthropic providers through this fork.
 - `REDIS_URL` / `KV_URL`: resumable streams, stop signaling, and Redis-backed caching.
 - `VERCEL_PROJECT_PRODUCTION_URL` / `NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL`: canonical production URL for metadata and some callback behavior.
 - `VERCEL_SANDBOX_BASE_SNAPSHOT_ID`: override the default sandbox snapshot.

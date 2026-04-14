@@ -1,12 +1,6 @@
-import { gateway } from "ai";
-
 export const DEFAULT_MODEL_ID = "anthropic/claude-opus-4.6";
 export const DEFAULT_CONTEXT_LIMIT = 200_000;
 const TOKENS_PER_MILLION = 1_000_000;
-
-type GatewayAvailableModel = Awaited<
-  ReturnType<typeof gateway.getAvailableModels>
->["models"][number];
 
 export interface AvailableModelCostTier {
   input?: number;
@@ -18,10 +12,21 @@ export interface AvailableModelCost extends AvailableModelCostTier {
   context_over_200k?: AvailableModelCostTier;
 }
 
-export type AvailableModel = GatewayAvailableModel & {
+/**
+ * Normalized language model metadata used by the web app.
+ *
+ * This mirrors the fields the UI cares about instead of depending on the
+ * Gateway response type, so local direct-provider mode can supply the same
+ * shape without going through AI Gateway discovery.
+ */
+export interface AvailableModel {
+  id: string;
+  name?: string;
+  description?: string;
+  modelType?: string;
   context_window?: number;
   cost?: AvailableModelCost;
-};
+}
 
 export function getModelDisplayName(model: AvailableModel): string {
   return model.name ?? model.id;
