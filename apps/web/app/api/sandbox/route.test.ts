@@ -223,6 +223,8 @@ describe("/api/sandbox lifecycle kicks", () => {
     writeFileCalls.length = 0;
     execCalls.length = 0;
     dotenvSyncCalls.length = 0;
+    process.env.DAYTONA_SANDBOX_BASE_IMAGE = "";
+    process.env.DAYTONA_SANDBOX_BASE_SNAPSHOT = "";
     currentVercelAuthInfo = {
       token: "vercel-token",
       expiresAt: 1_700_000_000,
@@ -515,6 +517,82 @@ describe("/api/sandbox lifecycle kicks", () => {
         createIfMissing: true,
       },
     });
+  });
+
+  test("blank daytona sandboxes use the deployment base image", async () => {
+    const { POST } = await routeModulePromise;
+
+    process.env.DAYTONA_SANDBOX_BASE_IMAGE =
+      "ghcr.io/open-harness/daytona-base:latest";
+    sessionRecord.vercelProjectId = null;
+    sessionRecord.vercelProjectName = null;
+    sessionRecord.vercelTeamId = null;
+    sessionRecord.sandboxState = {
+      type: "daytona",
+      sessionId: "session-session-1",
+      workingDirectory: "/home/daytona/workspace",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "daytona",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "daytona",
+        sandboxName: "session_session-1",
+        image: "ghcr.io/open-harness/daytona-base:latest",
+        sessionId: "session-session-1",
+        workingDirectory: "/home/daytona/workspace",
+      },
+    });
+  });
+
+  test("explicit daytona snapshots override the deployment base image", async () => {
+    const { POST } = await routeModulePromise;
+
+    process.env.DAYTONA_SANDBOX_BASE_IMAGE =
+      "ghcr.io/open-harness/daytona-base:latest";
+    sessionRecord.vercelProjectId = null;
+    sessionRecord.vercelProjectName = null;
+    sessionRecord.vercelTeamId = null;
+    sessionRecord.sandboxState = {
+      type: "daytona",
+      sessionId: "session-session-1",
+      workingDirectory: "/home/daytona/workspace",
+      snapshot: "snap-dev-base",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "daytona",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "daytona",
+        sandboxName: "session_session-1",
+        snapshot: "snap-dev-base",
+        sessionId: "session-session-1",
+        workingDirectory: "/home/daytona/workspace",
+      },
+    });
+    expect(connectConfigs[0]?.state).not.toHaveProperty("image");
   });
 
   test("rejects unsupported sandbox types", async () => {

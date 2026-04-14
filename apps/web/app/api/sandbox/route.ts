@@ -13,6 +13,7 @@ import {
   DEFAULT_DAYTONA_AUTO_STOP_MINUTES,
   DEFAULT_DAYTONA_WORKING_DIRECTORY,
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+  getDefaultDaytonaBlankLaunchSource,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
 } from "@/lib/sandbox/config";
@@ -181,6 +182,15 @@ export async function POST(req: Request) {
       : null;
   const pendingDaytonaImage = getDaytonaImage(pendingDaytonaState);
   const pendingDaytonaSnapshot = getDaytonaSnapshot(pendingDaytonaState);
+  const defaultDaytonaLaunchSource =
+    sandboxType === "daytona" && !pendingDaytonaSnapshot && !pendingDaytonaImage
+      ? getDefaultDaytonaBlankLaunchSource()
+      : {};
+  const effectiveDaytonaSnapshot =
+    pendingDaytonaSnapshot ?? defaultDaytonaLaunchSource.snapshot;
+  const effectiveDaytonaImage = effectiveDaytonaSnapshot
+    ? undefined
+    : (pendingDaytonaImage ?? defaultDaytonaLaunchSource.image);
 
   const sandboxName = sessionId ? getSessionSandboxName(sessionId) : undefined;
   const githubAccount = await getGitHubAccount(session.user.id);
@@ -226,10 +236,10 @@ export async function POST(req: Request) {
           state: {
             type: "daytona",
             ...(sandboxName ? { sandboxName } : {}),
-            ...(pendingDaytonaSnapshot
-              ? { snapshot: pendingDaytonaSnapshot }
+            ...(effectiveDaytonaSnapshot
+              ? { snapshot: effectiveDaytonaSnapshot }
               : {}),
-            ...(pendingDaytonaImage ? { image: pendingDaytonaImage } : {}),
+            ...(effectiveDaytonaImage ? { image: effectiveDaytonaImage } : {}),
             source,
             sessionId:
               pendingDaytonaState?.sessionId ??

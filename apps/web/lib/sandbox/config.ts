@@ -35,6 +35,40 @@ export const CODE_SERVER_PORT = 8000;
 export const DEFAULT_DAYTONA_AUTO_STOP_MINUTES = 30;
 export const DEFAULT_DAYTONA_WORKING_DIRECTORY = "/home/daytona/workspace";
 
+function getOptionalEnvValue(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+/**
+ * Optional managed base launch source for blank Daytona sandboxes.
+ * Prefer an image ref for BYOK Daytona because snapshots are org-scoped.
+ */
+export function getDefaultDaytonaBaseSnapshot(): string | null {
+  return getOptionalEnvValue("DAYTONA_SANDBOX_BASE_SNAPSHOT");
+}
+
+export function getDefaultDaytonaBaseImage(): string | null {
+  return getOptionalEnvValue("DAYTONA_SANDBOX_BASE_IMAGE");
+}
+
+export function getDefaultDaytonaBlankLaunchSource(): {
+  snapshot?: string;
+  image?: string;
+} {
+  const snapshot = getDefaultDaytonaBaseSnapshot();
+  if (snapshot) {
+    return { snapshot };
+  }
+
+  const image = getDefaultDaytonaBaseImage();
+  if (image) {
+    return { image };
+  }
+
+  return {};
+}
+
 /** Default working directory for sandboxes, used for path display */
 export const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
 

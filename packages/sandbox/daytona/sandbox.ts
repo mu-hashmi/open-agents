@@ -56,6 +56,15 @@ function isNotFoundError(error: unknown): boolean {
   );
 }
 
+function isBrokenProcessSessionError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("expected a stream of command data") ||
+    message.includes("failed to write command") ||
+    message.includes("broken pipe")
+  );
+}
+
 function toEnoent(pathname: string, action: string): Error {
   return Object.assign(
     new Error(`ENOENT: no such file or directory, ${action} '${pathname}'`),
@@ -135,6 +144,21 @@ async function ensureSessionExists(
 
     await sandbox.process.createSession(sessionId);
   }
+}
+
+async function recreateSession(
+  sandbox: DaytonaSdkSandbox,
+  sessionId: string,
+): Promise<void> {
+  try {
+    await sandbox.process.deleteSession(sessionId);
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      throw error;
+    }
+  }
+
+  await sandbox.process.createSession(sessionId);
 }
 
 async function runSetupCommand(params: {
@@ -223,6 +247,7 @@ export class DaytonaSandbox implements Sandbox {
   private _timeout?: number;
   private readonly previewUrls: Map<number, string>;
   private sessionReadyPromise?: Promise<void>;
+  private sessionRecoveryPromise?: Promise<void>;
 
   private constructor(
     private readonly sandbox: DaytonaSdkSandbox,
@@ -254,7 +279,57 @@ export class DaytonaSandbox implements Sandbox {
       this.sandbox,
       this.sessionId,
     );
-    await this.sessionReadyPromise;
+    const readyPromise = this.sessionReadyPromise;
+    try {
+      await readyPromise;
+    } catch (error) {
+      if (this.sessionReadyPromise === readyPromise) {
+        this.sessionReadyPromise = undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async recoverProcessSession(): Promise<void> {
+    if (!this.sessionRecoveryPromise) {
+      const recoveryPromise = recreateSession(this.sandbox, this.sessionId);
+      this.sessionRecoveryPromise = recoveryPromise;
+      this.sessionReadyPromise = recoveryPromise;
+    }
+
+    const recoveryPromise = this.sessionRecoveryPromise;
+    try {
+      await recoveryPromise;
+    } catch (error) {
+      if (this.sessionReadyPromise === recoveryPromise) {
+        this.sessionReadyPromise = undefined;
+      }
+      throw error;
+    } finally {
+      if (this.sessionRecoveryPromise === recoveryPromise) {
+        this.sessionRecoveryPromise = undefined;
+      }
+    }
+  }
+
+  // Daytona can keep a session record around even after its command stream dies.
+  // Rebuild that session once and retry the command instead of leaking the raw
+  // broken-pipe error to callers.
+  private async withRecoveredProcessSession<T>(
+    execute: () => Promise<T>,
+  ): Promise<T> {
+    await this.ensureProcessSession();
+
+    try {
+      return await execute();
+    } catch (error) {
+      if (!isBrokenProcessSessionError(error)) {
+        throw error;
+      }
+
+      await this.recoverProcessSession();
+      return execute();
+    }
   }
 
   get host(): string | undefined {
@@ -358,14 +433,14 @@ ${previewBlock}`;
     pathname: string,
     options?: { recursive?: boolean },
   ): Promise<void> {
-    await this.ensureProcessSession();
-
-    const result = await this.sandbox.process.executeSessionCommand(
-      this.sessionId,
-      {
-        command: `mkdir ${options?.recursive ? "-p " : ""}${shellEscape(pathname)}`,
-      },
-      DEFAULT_CONNECT_TIMEOUT_SECONDS,
+    const result = await this.withRecoveredProcessSession(() =>
+      this.sandbox.process.executeSessionCommand(
+        this.sessionId,
+        {
+          command: `mkdir ${options?.recursive ? "-p " : ""}${shellEscape(pathname)}`,
+        },
+        DEFAULT_CONNECT_TIMEOUT_SECONDS,
+      ),
     );
 
     if ((result.exitCode ?? 1) !== 0) {
@@ -428,14 +503,14 @@ ${previewBlock}`;
           });
 
     try {
-      await this.ensureProcessSession();
-
-      const execution = this.sandbox.process.executeSessionCommand(
-        this.sessionId,
-        {
-          command: `cd ${shellEscape(cwd)} && ${command}`,
-        },
-        timeoutSeconds,
+      const execution = this.withRecoveredProcessSession(() =>
+        this.sandbox.process.executeSessionCommand(
+          this.sessionId,
+          {
+            command: `cd ${shellEscape(cwd)} && ${command}`,
+          },
+          timeoutSeconds,
+        ),
       );
 
       const result = await (abortPromise
@@ -482,15 +557,15 @@ ${previewBlock}`;
     command: string,
     cwd: string,
   ): Promise<{ commandId: string }> {
-    await this.ensureProcessSession();
-
-    const result = await this.sandbox.process.executeSessionCommand(
-      this.sessionId,
-      {
-        command: `cd ${shellEscape(cwd)} && ${command}`,
-        runAsync: true,
-      },
-      DEFAULT_CONNECT_TIMEOUT_SECONDS,
+    const result = await this.withRecoveredProcessSession(() =>
+      this.sandbox.process.executeSessionCommand(
+        this.sessionId,
+        {
+          command: `cd ${shellEscape(cwd)} && ${command}`,
+          runAsync: true,
+        },
+        DEFAULT_CONNECT_TIMEOUT_SECONDS,
+      ),
     );
 
     return { commandId: result.cmdId };
@@ -569,14 +644,18 @@ ${previewBlock}`;
           },
           { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
         )
-      : await daytona.create(
-          {
-            ...baseParams,
-            ...(config.image ? { image: config.image } : {}),
-            ...(config.resources ? { resources: config.resources } : {}),
-          },
-          { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
-        );
+      : config.image
+        ? await daytona.create(
+            {
+              ...baseParams,
+              image: config.image,
+              ...(config.resources ? { resources: config.resources } : {}),
+            },
+            { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
+          )
+        : await daytona.create(baseParams, {
+            timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS,
+          });
 
     await ensureSessionExists(sandbox, config.sessionId);
 

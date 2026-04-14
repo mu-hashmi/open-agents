@@ -283,8 +283,10 @@ describe("/api/sessions/[sessionId]/dev-server", () => {
 
     expect(lastLaunchCommand).toContain(DEV_SERVER_PID_FILE);
     expect(lastLaunchCommand).toContain("bun install");
+    expect(lastLaunchCommand).toContain("nohup env BROWSER=none");
     expect(lastLaunchCommand).toContain("bun run dev");
     expect(lastLaunchCommand).toContain("--hostname 0.0.0.0 --port 3000");
+    expect(lastLaunchCommand).not.toContain("exec env BROWSER=none");
   });
 
   test("returns the existing preview URL without relaunching when the dev server is already running", async () => {

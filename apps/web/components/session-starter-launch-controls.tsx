@@ -244,7 +244,9 @@ export function SessionStarterLaunchControls({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Uses Daytona&apos;s default image for this session only.
+                Uses this deployment&apos;s default blank-Daytona runtime when
+                configured; otherwise falls back to Daytona&apos;s default
+                image.
               </p>
             )}
           </div>

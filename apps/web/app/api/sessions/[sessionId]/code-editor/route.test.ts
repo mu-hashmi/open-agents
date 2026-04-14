@@ -260,7 +260,9 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
     });
     expect(execDetachedMock).toHaveBeenCalledTimes(1);
     expect(lastLaunchCwd).toBe("/vercel/sandbox");
+    expect(lastLaunchCommand).toContain("nohup code-server --port 8000");
     expect(lastLaunchCommand).toContain("code-server --port 8000");
+    expect(lastLaunchCommand).not.toContain("exec code-server");
     expect(fileContents.get(CODE_EDITOR_PID_FILE)).toBe(
       `${RUNNING_CODE_SERVER_PID}\n`,
     );

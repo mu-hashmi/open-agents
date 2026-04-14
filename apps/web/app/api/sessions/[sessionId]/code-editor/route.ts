@@ -2,6 +2,10 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
+import {
+  buildDetachedLaunchCommand,
+  shellQuote,
+} from "@/app/api/sessions/_lib/detached-launch";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
@@ -26,12 +30,9 @@ export type CodeEditorStopResponse = {
 };
 
 const CODE_SERVER_PIDFILE = "/tmp/open-harness-code-server.pid";
+const CODE_SERVER_LOGFILE = "/tmp/open-harness-code-server.log";
 
 type ConnectedSandbox = Awaited<ReturnType<typeof connectUserSandbox>>;
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
 
 async function connectCodeEditorSandbox(sessionId: string, userId: string) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
@@ -287,10 +288,11 @@ export async function POST(_req: Request, context: RouteContext) {
     }
 
     // Launch code-server in detached mode
-    const launchCommand = [
-      `printf '%s' "$$" > ${shellQuote(CODE_SERVER_PIDFILE)}`,
-      `exec code-server --port ${port} --auth none --bind-addr 0.0.0.0:${port} --disable-telemetry ${shellQuote(workingDirectory)}`,
-    ].join(" && ");
+    const launchCommand = buildDetachedLaunchCommand({
+      command: `code-server --port ${port} --auth none --bind-addr 0.0.0.0:${port} --disable-telemetry ${shellQuote(workingDirectory)}`,
+      pidFilePath: CODE_SERVER_PIDFILE,
+      logFilePath: CODE_SERVER_LOGFILE,
+    });
 
     try {
       await sandbox.execDetached(launchCommand, workingDirectory);

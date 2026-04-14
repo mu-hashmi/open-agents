@@ -126,6 +126,8 @@ KV_URL=
 VERCEL_PROJECT_PRODUCTION_URL=
 NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL=
 VERCEL_SANDBOX_BASE_SNAPSHOT_ID=
+DAYTONA_SANDBOX_BASE_IMAGE=
+DAYTONA_SANDBOX_BASE_SNAPSHOT=
 ELEVENLABS_API_KEY=
 ```
 
@@ -134,7 +136,21 @@ ELEVENLABS_API_KEY=
 - `REDIS_URL` / `KV_URL`: resumable streams, stop signaling, and Redis-backed caching.
 - `VERCEL_PROJECT_PRODUCTION_URL` / `NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL`: canonical production URL for metadata and some callback behavior.
 - `VERCEL_SANDBOX_BASE_SNAPSHOT_ID`: override the default sandbox snapshot.
+- `DAYTONA_SANDBOX_BASE_IMAGE`: managed blank-Daytona base image reference. Recommended for BYOK Daytona because image refs work across orgs/accounts.
+- `DAYTONA_SANDBOX_BASE_SNAPSHOT`: managed blank-Daytona base snapshot ref. Useful for deployments that use one shared Daytona org; snapshots are org-scoped.
 - `ELEVENLABS_API_KEY`: voice transcription.
+
+If you want a public base image for BYOK Daytona, publish it with:
+
+```bash
+bun run daytona:publish-base-image
+```
+
+If you want a shared-org Daytona base snapshot, create it with:
+
+```bash
+DAYTONA_API_KEY=your-key bun run scripts/create-daytona-base-snapshot.ts
+```
 
 ## Deploy your own copy on Vercel
 

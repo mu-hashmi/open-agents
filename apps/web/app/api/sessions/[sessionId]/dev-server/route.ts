@@ -3,6 +3,10 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
+import {
+  buildDetachedLaunchCommand,
+  shellQuote,
+} from "@/app/api/sessions/_lib/detached-launch";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { connectUserSandbox } from "@/lib/sandbox/connect-user-sandbox";
 import { isSandboxActive } from "@/lib/sandbox/utils";
@@ -598,10 +602,6 @@ async function shouldInstallDependencies(params: {
   return false;
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
 function getFrameworkArgs(framework: DevFramework, port: number): string[] {
   switch (framework) {
     case "next":
@@ -641,6 +641,13 @@ function getDevServerPidFilePath(packageDirAbs: string, port: number): string {
   );
 }
 
+function getDevServerLogFilePath(packageDirAbs: string, port: number): string {
+  return path.posix.join(
+    packageDirAbs,
+    `${DEV_SERVER_PIDFILE_PREFIX}-${port}.log`,
+  );
+}
+
 function buildLaunchCommand(params: {
   packageManager: PackageManager;
   framework: DevFramework;
@@ -655,7 +662,7 @@ function buildLaunchCommand(params: {
     params.framework,
     params.port,
   );
-  const commandSteps = [`printf '%s' "$$" > ${shellQuote(params.pidFilePath)}`];
+  const commandSteps: string[] = [];
 
   if (params.installDependencies) {
     const installCommand = INSTALL_COMMANDS[params.packageManager];
@@ -666,7 +673,13 @@ function buildLaunchCommand(params: {
     );
   }
 
-  commandSteps.push(`exec ${runCommand}`);
+  commandSteps.push(
+    buildDetachedLaunchCommand({
+      command: runCommand,
+      pidFilePath: params.pidFilePath,
+      logFilePath: getDevServerLogFilePath(params.packageDirAbs, params.port),
+    }),
+  );
 
   return commandSteps.join(" && ");
 }
