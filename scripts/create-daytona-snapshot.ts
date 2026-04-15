@@ -24,8 +24,7 @@ import { Daytona, Image } from "@daytona/sdk";
 
 const SNAPSHOT_NAME = process.env.SNAPSHOT_NAME ?? "open-agents";
 const REPO_URL =
-  process.env.REPO_URL ??
-  "https://github.com/mu-hashmi/open-agents.git";
+  process.env.REPO_URL ?? "https://github.com/mu-hashmi/open-agents.git";
 const REPO_BRANCH = process.env.REPO_BRANCH ?? "daytona-backend";
 
 const WORKSPACE = "/home/daytona/workspace";
@@ -53,7 +52,9 @@ async function main() {
 
   const daytona = new Daytona({ apiKey });
 
-  console.log(`Creating snapshot "${SNAPSHOT_NAME}" from ${REPO_URL}@${REPO_BRANCH}...`);
+  console.log(
+    `Creating snapshot "${SNAPSHOT_NAME}" from ${REPO_URL}@${REPO_BRANCH}...`,
+  );
   console.log("This will take a few minutes (cloning repo + bun install).\n");
 
   const snapshot = await daytona.snapshot.create(
@@ -70,7 +71,9 @@ async function main() {
 
   console.log(`\nSnapshot created: ${snapshot.name} (${snapshot.id})`);
   console.log(`State: ${snapshot.state}`);
-  console.log(`\nUse this snapshot in the UI "From snapshot" picker, or create a sandbox with:`);
+  console.log(
+    `\nUse this snapshot in the UI "From snapshot" picker, or create a sandbox with:`,
+  );
   console.log(`  daytona create --snapshot ${SNAPSHOT_NAME}`);
 }
 

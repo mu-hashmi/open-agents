@@ -55,22 +55,19 @@ describe("Daytona image snapshots", () => {
     snapshotCreateMock.mockClear();
     snapshotActivateMock.mockClear();
 
-    snapshotGetMock.mockImplementation(async (_name: string): Promise<MockSnapshot> => {
-      throw createNamedError("MockDaytonaNotFoundError", "not found");
-    });
+    snapshotGetMock.mockImplementation(
+      async (_name: string): Promise<MockSnapshot> => {
+        throw createNamedError("MockDaytonaNotFoundError", "not found");
+      },
+    );
     snapshotCreateMock.mockImplementation(
-      async (
-        _params: unknown,
-        _options?: unknown,
-      ): Promise<MockSnapshot> => ({
+      async (_params: unknown, _options?: unknown): Promise<MockSnapshot> => ({
         name: "snapshot-created",
         state: "active",
       }),
     );
     snapshotActivateMock.mockImplementation(
-      async (
-        snapshot: Record<string, unknown>,
-      ): Promise<MockSnapshot> => ({
+      async (snapshot: Record<string, unknown>): Promise<MockSnapshot> => ({
         ...(snapshot as MockSnapshot),
         state: "active",
       }),
@@ -97,10 +94,12 @@ describe("Daytona image snapshots", () => {
   test("reuses existing active snapshots", async () => {
     const { ensureNamedDaytonaSnapshotForImage } = await snapshotsModulePromise;
 
-    snapshotGetMock.mockImplementation(async (): Promise<MockSnapshot> => ({
-      name: "open-agents:image:base:abc123def456",
-      state: "active",
-    }));
+    snapshotGetMock.mockImplementation(
+      async (): Promise<MockSnapshot> => ({
+        name: "open-agents:image:base:abc123def456",
+        state: "active",
+      }),
+    );
 
     const result = await ensureNamedDaytonaSnapshotForImage({
       apiKey: "daytona-key",
@@ -119,10 +118,12 @@ describe("Daytona image snapshots", () => {
   test("activates existing inactive snapshots before reuse", async () => {
     const { ensureNamedDaytonaSnapshotForImage } = await snapshotsModulePromise;
 
-    snapshotGetMock.mockImplementation(async (): Promise<MockSnapshot> => ({
-      name: "open-agents:image:base:abc123def456",
-      state: "inactive",
-    }));
+    snapshotGetMock.mockImplementation(
+      async (): Promise<MockSnapshot> => ({
+        name: "open-agents:image:base:abc123def456",
+        state: "inactive",
+      }),
+    );
 
     const result = await ensureNamedDaytonaSnapshotForImage({
       apiKey: "daytona-key",
@@ -141,9 +142,9 @@ describe("Daytona image snapshots", () => {
 
     snapshotCreateMock.mockImplementation(
       async (params: unknown): Promise<MockSnapshot> => {
-      return {
-        name: (params as { name: string }).name,
-        state: "active",
+        return {
+          name: (params as { name: string }).name,
+          state: "active",
         } satisfies MockSnapshot;
       },
     );
@@ -175,14 +176,14 @@ describe("Daytona image snapshots", () => {
     let getCallCount = 0;
     snapshotGetMock.mockImplementation(
       async (name: string): Promise<MockSnapshot> => {
-      getCallCount += 1;
-      if (getCallCount === 1) {
-        throw createNamedError("MockDaytonaNotFoundError", "not found");
-      }
+        getCallCount += 1;
+        if (getCallCount === 1) {
+          throw createNamedError("MockDaytonaNotFoundError", "not found");
+        }
 
-      return {
-        name,
-        state: "active",
+        return {
+          name,
+          state: "active",
         } satisfies MockSnapshot;
       },
     );

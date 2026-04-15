@@ -29,6 +29,7 @@ export const users = pgTable(
     name: text("name"),
     avatarUrl: text("avatar_url"),
     daytonaApiKey: text("daytona_api_key"),
+    daytonaApiUrl: text("daytona_api_url"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     tokenExpiresAt: timestamp("token_expires_at"),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

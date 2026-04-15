@@ -633,7 +633,10 @@ ${previewBlock}`;
   }
 
   static async create(config: DaytonaSandboxConfig): Promise<DaytonaSandbox> {
-    const daytona = new Daytona({ apiKey: config.apiKey });
+    const daytona = new Daytona({
+      apiKey: config.apiKey,
+      ...(config.apiUrl ? { apiUrl: config.apiUrl } : {}),
+    });
     const env = buildSandboxEnv(config);
 
     const baseParams = {
@@ -779,7 +782,10 @@ ${previewBlock}`;
       throw new Error("Daytona sandbox ID or name is required");
     }
 
-    const daytona = new Daytona({ apiKey: config.apiKey });
+    const daytona = new Daytona({
+      apiKey: config.apiKey,
+      ...(config.apiUrl ? { apiUrl: config.apiUrl } : {}),
+    });
     const sandbox = await daytona.get(sandboxId);
 
     if (sandbox.state !== "started" && config.resume !== false) {

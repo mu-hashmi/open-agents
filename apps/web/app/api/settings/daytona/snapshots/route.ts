@@ -1,5 +1,5 @@
 import { Daytona } from "@daytona/sdk";
-import { getUserDaytonaApiKey } from "@/lib/daytona/api-key";
+import { getUserDaytonaCredentials } from "@/lib/daytona/api-key";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 const SNAPSHOT_PAGE_SIZE = 100;
@@ -45,8 +45,8 @@ export async function GET() {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const apiKey = await getUserDaytonaApiKey(session.user.id);
-  if (!apiKey) {
+  const credentials = await getUserDaytonaCredentials(session.user.id);
+  if (!credentials) {
     return Response.json(
       {
         error:
@@ -57,7 +57,10 @@ export async function GET() {
   }
 
   try {
-    const daytona = new Daytona({ apiKey });
+    const daytona = new Daytona({
+      apiKey: credentials.apiKey,
+      ...(credentials.apiUrl ? { apiUrl: credentials.apiUrl } : {}),
+    });
     const snapshots: SnapshotResponseItem[] = [];
 
     let page = 1;

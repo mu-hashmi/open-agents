@@ -31,6 +31,10 @@ mock.module("@/lib/session/get-server-session", () => ({
 mock.module("@/lib/daytona/api-key", () => ({
   getUserDaytonaApiKey: async () => currentDaytonaApiKey,
   hasUserDaytonaApiKey: async () => currentDaytonaApiKey !== null,
+  getUserDaytonaCredentials: async () =>
+    currentDaytonaApiKey
+      ? { apiKey: currentDaytonaApiKey, apiUrl: undefined }
+      : null,
 }));
 
 mock.module("@daytona/sdk", () => ({

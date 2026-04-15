@@ -3,6 +3,7 @@ import type { SandboxHooks } from "../interface";
 
 export interface DaytonaSandboxConfig {
   apiKey: string;
+  apiUrl?: string;
   name?: string;
   source?: {
     url: string;
@@ -27,6 +28,7 @@ export interface DaytonaSandboxConfig {
 
 export interface DaytonaSandboxConnectConfig {
   apiKey: string;
+  apiUrl?: string;
   env?: Record<string, string>;
   githubToken?: string;
   hooks?: SandboxHooks;

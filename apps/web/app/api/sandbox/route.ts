@@ -6,7 +6,7 @@ import {
 } from "@/app/api/sessions/_lib/session-context";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { updateSession } from "@/lib/db/sessions";
-import { getUserDaytonaApiKey } from "@/lib/daytona/api-key";
+import { getUserDaytonaCredentials } from "@/lib/daytona/api-key";
 import { ensureNamedDaytonaSnapshotForImage } from "@/lib/daytona/snapshots";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
@@ -140,12 +140,14 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const [githubToken, daytonaApiKey] = await Promise.all([
+  const [githubToken, daytonaCredentials] = await Promise.all([
     getUserGitHubToken(session.user.id),
     sandboxType === "daytona"
-      ? getUserDaytonaApiKey(session.user.id)
+      ? getUserDaytonaCredentials(session.user.id)
       : Promise.resolve(null),
   ]);
+  const daytonaApiKey = daytonaCredentials?.apiKey ?? null;
+  const daytonaApiUrl = daytonaCredentials?.apiUrl;
 
   if (repoUrl) {
     const parsedRepo = parseGitHubUrl(repoUrl);
@@ -241,6 +243,7 @@ export async function POST(req: Request) {
   ) {
     const { snapshotName } = await ensureNamedDaytonaSnapshotForImage({
       apiKey: daytonaApiKey,
+      apiUrl: daytonaApiUrl,
       image: pendingDaytonaImage,
     });
     effectiveDaytonaSnapshot = snapshotName;
@@ -267,6 +270,7 @@ export async function POST(req: Request) {
           },
           options: {
             apiKey: daytonaApiKey ?? undefined,
+            apiUrl: daytonaApiUrl,
             env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
             githubToken: githubToken ?? undefined,
             gitUser,

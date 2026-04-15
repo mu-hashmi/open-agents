@@ -211,6 +211,13 @@
       "when": 1776139831613,
       "tag": "0029_free_glorian",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1776220365438,
+      "tag": "0030_natural_lord_tyger",
+      "breakpoints": true
     }
   ]
 }

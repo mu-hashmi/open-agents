@@ -37,6 +37,8 @@ export interface ConnectOptions {
   baseSnapshotId?: string;
   /** Daytona API key (required for Daytona sandboxes) */
   apiKey?: string;
+  /** Custom Daytona API URL for self-hosted instances */
+  apiUrl?: string;
   /** Whether to resume a stopped persistent sandbox session */
   resume?: boolean;
   /** Whether to create the named sandbox when it does not already exist */

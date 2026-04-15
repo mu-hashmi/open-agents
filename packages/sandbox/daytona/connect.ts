@@ -28,6 +28,7 @@ export async function connectDaytona(
     try {
       return await DaytonaSandbox.connect(state, {
         apiKey: options.apiKey,
+        apiUrl: options.apiUrl,
         env: options.env,
         githubToken: options.githubToken,
         hooks: options.hooks,
@@ -46,6 +47,7 @@ export async function connectDaytona(
 
   return DaytonaSandbox.create({
     apiKey: options.apiKey,
+    apiUrl: options.apiUrl,
     name: state.sandboxName,
     source: state.source
       ? {

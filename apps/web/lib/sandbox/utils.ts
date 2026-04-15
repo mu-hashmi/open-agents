@@ -237,7 +237,10 @@ export function hasRuntimeSandboxState(state: unknown): boolean {
 
 export function isSandboxNotFoundError(message: string): boolean {
   const normalized = message.toLowerCase();
-  return normalized.includes("status code 404") || hasNamedSandboxNotFoundMessage(normalized);
+  return (
+    normalized.includes("status code 404") ||
+    hasNamedSandboxNotFoundMessage(normalized)
+  );
 }
 
 /**

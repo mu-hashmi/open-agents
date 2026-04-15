@@ -130,10 +130,14 @@ async function waitForActiveDaytonaSnapshot(
 
 export async function ensureNamedDaytonaSnapshotForImage(params: {
   apiKey: string;
+  apiUrl?: string;
   image: string;
 }): Promise<{ snapshotName: string; created: boolean }> {
   const snapshotName = buildAutomaticDaytonaImageSnapshotName(params.image);
-  const daytona = new DaytonaSdk.Daytona({ apiKey: params.apiKey });
+  const daytona = new DaytonaSdk.Daytona({
+    apiKey: params.apiKey,
+    ...(params.apiUrl ? { apiUrl: params.apiUrl } : {}),
+  });
   const dockerfileImage = {
     contextList: [],
     dockerfile: `FROM ${params.image}\n`,

@@ -1,13 +1,17 @@
 import { Daytona } from "@daytona/sdk";
 import {
   deleteUserDaytonaApiKey,
+  deleteUserDaytonaApiUrl,
+  getUserDaytonaApiUrl,
   hasUserDaytonaApiKey,
   setUserDaytonaApiKey,
+  setUserDaytonaApiUrl,
 } from "@/lib/daytona/api-key";
 import { getServerSession } from "@/lib/session/get-server-session";
 
-interface UpdateDaytonaApiKeyRequest {
+interface UpdateDaytonaRequest {
   apiKey?: string;
+  apiUrl?: string;
 }
 
 function getValidationErrorMessage(error: unknown): string {
@@ -24,8 +28,12 @@ export async function GET() {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const hasApiKey = await hasUserDaytonaApiKey(session.user.id);
-  return Response.json({ hasApiKey });
+  const [hasApiKey, apiUrl] = await Promise.all([
+    hasUserDaytonaApiKey(session.user.id),
+    getUserDaytonaApiUrl(session.user.id),
+  ]);
+
+  return Response.json({ hasApiKey, apiUrl: apiUrl ?? null });
 }
 
 export async function PUT(req: Request) {
@@ -34,9 +42,9 @@ export async function PUT(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: UpdateDaytonaApiKeyRequest;
+  let body: UpdateDaytonaRequest;
   try {
-    body = (await req.json()) as UpdateDaytonaApiKeyRequest;
+    body = (await req.json()) as UpdateDaytonaRequest;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -46,8 +54,13 @@ export async function PUT(req: Request) {
     return Response.json({ error: "API key is required" }, { status: 400 });
   }
 
+  const apiUrl = body.apiUrl?.trim() || undefined;
+
   try {
-    const daytona = new Daytona({ apiKey });
+    const daytona = new Daytona({
+      apiKey,
+      ...(apiUrl ? { apiUrl } : {}),
+    });
     await daytona.list(undefined, 1, 1);
   } catch (error) {
     return Response.json(
@@ -57,7 +70,14 @@ export async function PUT(req: Request) {
   }
 
   await setUserDaytonaApiKey(session.user.id, apiKey);
-  return Response.json({ hasApiKey: true });
+
+  if (apiUrl) {
+    await setUserDaytonaApiUrl(session.user.id, apiUrl);
+  } else {
+    await deleteUserDaytonaApiUrl(session.user.id);
+  }
+
+  return Response.json({ hasApiKey: true, apiUrl: apiUrl ?? null });
 }
 
 export async function DELETE() {
@@ -66,6 +86,10 @@ export async function DELETE() {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  await deleteUserDaytonaApiKey(session.user.id);
-  return Response.json({ hasApiKey: false });
+  await Promise.all([
+    deleteUserDaytonaApiKey(session.user.id),
+    deleteUserDaytonaApiUrl(session.user.id),
+  ]);
+
+  return Response.json({ hasApiKey: false, apiUrl: null });
 }

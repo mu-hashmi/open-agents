@@ -84,7 +84,11 @@ const writeFileCalls: Array<{ path: string; content: string }> = [];
 const execCalls: Array<{ command: string; cwd: string; timeoutMs: number }> =
   [];
 const dotenvSyncCalls: Array<Record<string, unknown>> = [];
-const snapshotPreparationCalls: Array<{ apiKey: string; image: string }> = [];
+const snapshotPreparationCalls: Array<{
+  apiKey: string;
+  apiUrl?: string;
+  image: string;
+}> = [];
 
 let sessionRecord: TestSessionRecord;
 let currentVercelAuthInfo: TestVercelAuthInfo | null;
@@ -123,6 +127,10 @@ mock.module("@/lib/github/user-token", () => ({
 mock.module("@/lib/daytona/api-key", () => ({
   getUserDaytonaApiKey: async () => currentDaytonaApiKey,
   hasUserDaytonaApiKey: async () => currentDaytonaApiKey !== null,
+  getUserDaytonaCredentials: async () =>
+    currentDaytonaApiKey
+      ? { apiKey: currentDaytonaApiKey, apiUrl: undefined }
+      : null,
 }));
 
 mock.module("@/lib/daytona/snapshots", () => ({
@@ -529,6 +537,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(snapshotPreparationCalls).toEqual([
       {
         apiKey: "daytona-key",
+        apiUrl: undefined,
         image: "ghcr.io/acme/devbox:latest",
       },
     ]);
