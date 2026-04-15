@@ -196,4 +196,38 @@ describe("/api/sandbox/reconnect", () => {
       type: "vercel",
     });
   });
+
+  test("marks sandbox expired when Daytona reports the sandbox name is gone", async () => {
+    const { GET } = await routeModulePromise;
+
+    sessionRecord.snapshotUrl = null;
+    probeResult = {
+      success: false,
+      stdout: "",
+      stderr:
+        "Sandbox with ID or name e18e4425-e9b1-4f73-84de-36d194c53a88 not found",
+    };
+
+    const response = await GET(
+      new Request("http://localhost/api/sandbox/reconnect?sessionId=session-1"),
+    );
+    const payload = (await response.json()) as {
+      status: string;
+      hasSnapshot: boolean;
+      lifecycle: { state: string | null };
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload.status).toBe("expired");
+    expect(payload.hasSnapshot).toBe(false);
+    expect(payload.lifecycle.state).toBe("hibernated");
+
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]?.sessionId).toBe("session-1");
+    expect(updateCalls[0]?.patch.lifecycleState).toBe("hibernated");
+    expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
+    expect(updateCalls[0]?.patch.sandboxState).toEqual({
+      type: "vercel",
+    });
+  });
 });

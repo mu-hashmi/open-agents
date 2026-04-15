@@ -8,6 +8,14 @@ function hasNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function hasNamedSandboxNotFoundMessage(normalizedMessage: string): boolean {
+  return (
+    normalizedMessage.includes("sandbox not found") ||
+    (normalizedMessage.includes("sandbox with id or name") &&
+      normalizedMessage.includes("not found"))
+  );
+}
+
 function getSandboxExpiresAt(state: unknown): number | undefined {
   if (!state || typeof state !== "object") {
     return undefined;
@@ -229,10 +237,7 @@ export function hasRuntimeSandboxState(state: unknown): boolean {
 
 export function isSandboxNotFoundError(message: string): boolean {
   const normalized = message.toLowerCase();
-  return (
-    normalized.includes("status code 404") ||
-    normalized.includes("sandbox not found")
-  );
+  return normalized.includes("status code 404") || hasNamedSandboxNotFoundMessage(normalized);
 }
 
 /**
@@ -247,7 +252,7 @@ export function isSandboxUnavailableError(message: string): boolean {
     normalized.includes("status code 410") ||
     normalized.includes("status code 404") ||
     normalized.includes("sandbox is stopped") ||
-    normalized.includes("sandbox not found") ||
+    hasNamedSandboxNotFoundMessage(normalized) ||
     normalized.includes("sandbox probe failed")
   );
 }
@@ -326,6 +331,23 @@ export function clearSandboxResumeState(
   state: SandboxState | null | undefined,
 ): SandboxState | null {
   if (!state) return null;
+
+  if (state.type === "daytona") {
+    const sessionId = getDaytonaSessionId(state);
+    const snapshot = getDaytonaSnapshot(state);
+    const image = snapshot ? null : getDaytonaImage(state);
+    const workingDirectory = getWorkingDirectory(state);
+    const resources = getDaytonaResources(state);
+
+    return {
+      type: "daytona",
+      ...(sessionId ? { sessionId } : {}),
+      ...(workingDirectory ? { workingDirectory } : {}),
+      ...(resources ? { resources } : {}),
+      ...(snapshot ? { snapshot } : {}),
+      ...(image ? { image } : {}),
+    } as SandboxState;
+  }
 
   return { type: state.type } as SandboxState;
 }
