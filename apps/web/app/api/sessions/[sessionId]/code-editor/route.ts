@@ -19,6 +19,17 @@ export type CodeEditorLaunchResponse = {
   port: number;
 };
 
+export type CodeEditorMissingDependency = {
+  id: "code-server";
+  name: "code-server";
+  installCommand: string;
+};
+
+export type CodeEditorMissingDependencyResponse = {
+  error: string;
+  missingDependency: CodeEditorMissingDependency;
+};
+
 export type CodeEditorStatusResponse = {
   running: boolean;
   url: string | null;
@@ -31,6 +42,8 @@ export type CodeEditorStopResponse = {
 
 const CODE_SERVER_PIDFILE = "/tmp/open-harness-code-server.pid";
 const CODE_SERVER_LOGFILE = "/tmp/open-harness-code-server.log";
+const CODE_SERVER_INSTALL_COMMAND =
+  "curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local";
 
 type ConnectedSandbox = Awaited<ReturnType<typeof connectUserSandbox>>;
 
@@ -175,6 +188,51 @@ async function findRunningCodeServerPid(
   return findCodeServerPidFromProcessList(sandbox);
 }
 
+async function resolveCodeServerCommand(
+  sandbox: ConnectedSandbox,
+): Promise<"code-server" | "/usr/local/bin/code-server" | null> {
+  const pathResult = await sandbox.exec(
+    "command -v code-server >/dev/null 2>&1",
+    "/tmp",
+    5_000,
+  );
+  if (pathResult.success) {
+    return "code-server";
+  }
+
+  const fallbackPathResult = await sandbox.exec(
+    "test -x /usr/local/bin/code-server",
+    "/tmp",
+    5_000,
+  );
+  return fallbackPathResult.success ? "/usr/local/bin/code-server" : null;
+}
+
+async function installCodeServer(sandbox: ConnectedSandbox): Promise<void> {
+  const installResult = await sandbox.exec(
+    CODE_SERVER_INSTALL_COMMAND,
+    "/tmp",
+    300_000,
+  );
+  if (!installResult.success) {
+    const stderr = installResult.stderr.trim();
+    const stdout = installResult.stdout.trim();
+    throw new Error(stderr || stdout || "Failed to install code-server");
+  }
+}
+
+function getMissingDependencyResponse(): CodeEditorMissingDependencyResponse {
+  return {
+    error:
+      "This sandbox does not have code-server installed. Install it to open the built-in editor.",
+    missingDependency: {
+      id: "code-server",
+      name: "code-server",
+      installCommand: CODE_SERVER_INSTALL_COMMAND,
+    },
+  };
+}
+
 /**
  * Check if code-server is running, using a tracked PID first and then
  * a process-list lookup for code-server specifically.
@@ -246,6 +304,23 @@ export async function POST(_req: Request, context: RouteContext) {
   const { sessionId } = await context.params;
 
   try {
+    const requestText = await _req.text();
+    const installMissingDependency =
+      requestText.trim().length > 0 &&
+      (() => {
+        try {
+          const body = JSON.parse(requestText) as unknown;
+          return (
+            typeof body === "object" &&
+            body !== null &&
+            "install" in body &&
+            body.install === true
+          );
+        } catch {
+          return false;
+        }
+      })();
+
     const sandboxResult = await connectCodeEditorSandbox(
       sessionId,
       authResult.userId,
@@ -271,6 +346,25 @@ export async function POST(_req: Request, context: RouteContext) {
 
     const port = CODE_SERVER_PORT;
     const workingDirectory = sandbox.workingDirectory;
+    let codeServerCommand = await resolveCodeServerCommand(sandbox);
+
+    if (!codeServerCommand) {
+      if (!installMissingDependency) {
+        return Response.json(getMissingDependencyResponse(), { status: 409 });
+      }
+
+      await installCodeServer(sandbox);
+      codeServerCommand = await resolveCodeServerCommand(sandbox);
+      if (!codeServerCommand) {
+        return Response.json(
+          {
+            error:
+              "code-server installation completed, but the binary is still unavailable in this sandbox.",
+          },
+          { status: 500 },
+        );
+      }
+    }
 
     // Reuse an existing code-server process when we can positively identify it.
     if (await isCodeServerRunning(sandbox)) {
@@ -289,7 +383,7 @@ export async function POST(_req: Request, context: RouteContext) {
 
     // Launch code-server in detached mode
     const launchCommand = buildDetachedLaunchCommand({
-      command: `code-server --port ${port} --auth none --bind-addr 0.0.0.0:${port} --disable-telemetry ${shellQuote(workingDirectory)}`,
+      command: `${codeServerCommand} --port ${port} --auth none --bind-addr 0.0.0.0:${port} --disable-telemetry ${shellQuote(workingDirectory)}`,
       pidFilePath: CODE_SERVER_PIDFILE,
       logFilePath: CODE_SERVER_LOGFILE,
     });

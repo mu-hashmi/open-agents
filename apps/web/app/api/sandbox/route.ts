@@ -7,6 +7,7 @@ import {
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { updateSession } from "@/lib/db/sessions";
 import { getUserDaytonaApiKey } from "@/lib/daytona/api-key";
+import { ensureNamedDaytonaSnapshotForImage } from "@/lib/daytona/snapshots";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import {
@@ -186,9 +187,9 @@ export async function POST(req: Request) {
     sandboxType === "daytona" && !pendingDaytonaSnapshot && !pendingDaytonaImage
       ? getDefaultDaytonaBlankLaunchSource()
       : {};
-  const effectiveDaytonaSnapshot =
+  let effectiveDaytonaSnapshot =
     pendingDaytonaSnapshot ?? defaultDaytonaLaunchSource.snapshot;
-  const effectiveDaytonaImage = effectiveDaytonaSnapshot
+  let effectiveDaytonaImage = effectiveDaytonaSnapshot
     ? undefined
     : (pendingDaytonaImage ?? defaultDaytonaLaunchSource.image);
 
@@ -228,6 +229,22 @@ export async function POST(req: Request) {
       },
       { status: 400 },
     );
+  }
+
+  if (
+    sandboxType === "daytona" &&
+    daytonaApiKey &&
+    pendingDaytonaImage &&
+    !pendingDaytonaSnapshot &&
+    !pendingDaytonaState?.sandboxId &&
+    !pendingDaytonaState?.sandboxName
+  ) {
+    const { snapshotName } = await ensureNamedDaytonaSnapshotForImage({
+      apiKey: daytonaApiKey,
+      image: pendingDaytonaImage,
+    });
+    effectiveDaytonaSnapshot = snapshotName;
+    effectiveDaytonaImage = undefined;
   }
 
   const sandbox =

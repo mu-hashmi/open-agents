@@ -137,6 +137,7 @@ import {
 } from "./sandbox-create";
 import { SandboxCreateErrorBanner } from "./sandbox-create-error-banner";
 import { SandboxResizeControls } from "./sandbox-resize-controls";
+import { CodeEditorInstallDialog } from "./code-editor-install-dialog";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 import "streamdown/styles.css";
 
@@ -3048,13 +3049,16 @@ export function SessionChatContent({
                       variant="ghost"
                       size="icon"
                       className="hidden h-7 w-7 sm:inline-flex"
+                      aria-label={codeEditor.menuLabel}
                       onClick={() => void codeEditor.handleOpen()}
                       disabled={
                         codeEditor.state.status === "starting" ||
+                        codeEditor.state.status === "installing" ||
                         codeEditor.state.status === "stopping"
                       }
                     >
-                      {codeEditor.state.status === "starting" ? (
+                      {codeEditor.state.status === "starting" ||
+                      codeEditor.state.status === "installing" ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Code2 className="h-3.5 w-3.5" />
@@ -4345,6 +4349,7 @@ export function SessionChatContent({
         }}
         editorBusy={
           codeEditor.state.status === "starting" ||
+          codeEditor.state.status === "installing" ||
           codeEditor.state.status === "stopping"
         }
         onOpenInEditor={(filePath) => {
@@ -4362,6 +4367,22 @@ export function SessionChatContent({
           setTimeout(() => {
             inputRef.current?.focus();
           }, 100);
+        }}
+      />
+      <CodeEditorInstallDialog
+        open={codeEditor.installPrompt !== null}
+        dependencyName={
+          codeEditor.installPrompt?.dependency.name ?? "code-server"
+        }
+        installError={codeEditor.installPrompt?.installError ?? null}
+        installing={codeEditor.state.status === "installing"}
+        onOpenChange={(open) => {
+          if (!open) {
+            codeEditor.dismissInstallPrompt();
+          }
+        }}
+        onConfirm={() => {
+          void codeEditor.handleInstall();
         }}
       />
     </>

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const CODE_EDITOR_PID_FILE = "/tmp/open-harness-code-server.pid";
+const CODE_SERVER_INSTALL_COMMAND =
+  "curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local";
 const RUNNING_CODE_SERVER_PID = "9001";
 
 const currentSessionRecord = {
@@ -18,6 +20,8 @@ let processListOutput = "";
 let portProbeStatusCode: string | null = null;
 let lastLaunchCommand: string | null = null;
 let lastLaunchCwd: string | null = null;
+let hasCodeServerBinary = true;
+let installCodeServerCommandCount = 0;
 
 function successResult(stdout = "") {
   return {
@@ -57,6 +61,24 @@ const requireOwnedSessionWithSandboxGuardMock = mock(async () => ({
 const execMock = mock(async (command: string) => {
   if (command === "ps -eo pid=,args=") {
     return successResult(processListOutput);
+  }
+
+  if (command === "command -v code-server >/dev/null 2>&1") {
+    return hasCodeServerBinary
+      ? successResult()
+      : failureResult("code-server: command not found");
+  }
+
+  if (command === "test -x /usr/local/bin/code-server") {
+    return hasCodeServerBinary
+      ? successResult()
+      : failureResult("/usr/local/bin/code-server: not found");
+  }
+
+  if (command === CODE_SERVER_INSTALL_COMMAND) {
+    hasCodeServerBinary = true;
+    installCodeServerCommandCount += 1;
+    return successResult("installed");
   }
 
   if (command.startsWith("kill -0 ")) {
@@ -105,6 +127,7 @@ const execDetachedMock = mock(async (command: string, cwd: string) => {
   fileContents.set(CODE_EDITOR_PID_FILE, `${RUNNING_CODE_SERVER_PID}\n`);
   runningPids.add(RUNNING_CODE_SERVER_PID);
   processListOutput = ` ${RUNNING_CODE_SERVER_PID} code-server --port 8000 --auth none --bind-addr 0.0.0.0:8000 /vercel/sandbox\n`;
+  portProbeStatusCode = "200";
 
   return { commandId: "cmd-1" };
 });
@@ -142,6 +165,8 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
     portProbeStatusCode = null;
     lastLaunchCommand = null;
     lastLaunchCwd = null;
+    hasCodeServerBinary = true;
+    installCodeServerCommandCount = 0;
     currentSessionRecord.sandboxState.expiresAt = Date.now() + 60_000;
     requireAuthenticatedUserMock.mockClear();
     requireOwnedSessionWithSandboxGuardMock.mockClear();
@@ -197,6 +222,63 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
       error: "Port 8000 is already in use by another process",
     });
     expect(execDetachedMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("POST prompts to install code-server when the dependency is missing", async () => {
+    const { POST } = await routeModulePromise;
+
+    hasCodeServerBinary = false;
+
+    const response = await POST(
+      new Request("http://localhost/api/sessions/session-1/code-editor", {
+        method: "POST",
+      }),
+      createRouteContext(),
+    );
+    const body = (await response.json()) as {
+      error: string;
+      missingDependency: {
+        id: string;
+        name: string;
+        installCommand: string;
+      };
+    };
+
+    expect(response.status).toBe(409);
+    expect(body).toEqual({
+      error:
+        "This sandbox does not have code-server installed. Install it to open the built-in editor.",
+      missingDependency: {
+        id: "code-server",
+        name: "code-server",
+        installCommand: CODE_SERVER_INSTALL_COMMAND,
+      },
+    });
+    expect(execDetachedMock).toHaveBeenCalledTimes(0);
+    expect(installCodeServerCommandCount).toBe(0);
+  });
+
+  test("POST installs code-server on demand before launching the editor", async () => {
+    const { POST } = await routeModulePromise;
+
+    hasCodeServerBinary = false;
+
+    const response = await POST(
+      new Request("http://localhost/api/sessions/session-1/code-editor", {
+        method: "POST",
+        body: JSON.stringify({ install: true }),
+      }),
+      createRouteContext(),
+    );
+    const body = (await response.json()) as { url: string; port: number };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      url: "https://sb-8000.vercel.run",
+      port: 8000,
+    });
+    expect(installCodeServerCommandCount).toBe(1);
+    expect(execDetachedMock).toHaveBeenCalledTimes(1);
   });
 
   test("POST reuses an existing code-server process found via process list when the pid file is missing", async () => {

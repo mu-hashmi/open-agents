@@ -4,23 +4,33 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   CodeEditorLaunchResponse,
+  CodeEditorMissingDependencyResponse,
   CodeEditorStatusResponse,
 } from "@/app/api/sessions/[sessionId]/code-editor/route";
 
 export type CodeEditorState =
   | { status: "idle" }
   | { status: "starting" }
+  | { status: "installing" }
   | { status: "stopping"; info: CodeEditorLaunchResponse }
   | { status: "error"; message: string }
   | { status: "ready"; info: CodeEditorLaunchResponse };
+
+export type CodeEditorInstallPromptState = {
+  dependency: CodeEditorMissingDependencyResponse["missingDependency"];
+  installError: string | null;
+};
 
 export interface CodeEditorControls {
   state: CodeEditorState;
   menuLabel: string;
   menuDetail: string | null;
   showStopAction: boolean;
+  installPrompt: CodeEditorInstallPromptState | null;
+  dismissInstallPrompt: () => void;
   handleOpen: () => Promise<void>;
   handleOpenFile: (filePath: string) => Promise<void>;
+  handleInstall: () => Promise<void>;
   handleStop: () => Promise<void>;
 }
 
@@ -53,6 +63,36 @@ function parseLaunchResponse(body: unknown): CodeEditorLaunchResponse | null {
   return { url, port };
 }
 
+function parseMissingDependencyResponse(
+  body: unknown,
+): CodeEditorMissingDependencyResponse | null {
+  if (!isRecord(body) || typeof body.error !== "string") {
+    return null;
+  }
+
+  const missingDependency = body.missingDependency;
+  if (!isRecord(missingDependency)) {
+    return null;
+  }
+
+  if (
+    missingDependency.id !== "code-server" ||
+    typeof missingDependency.name !== "string" ||
+    typeof missingDependency.installCommand !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    error: body.error,
+    missingDependency: {
+      id: "code-server",
+      name: "code-server",
+      installCommand: missingDependency.installCommand,
+    },
+  };
+}
+
 export function useCodeEditor({
   sessionId,
   canRun,
@@ -62,14 +102,18 @@ export function useCodeEditor({
 }): CodeEditorControls {
   const router = useRouter();
   const [state, setState] = useState<CodeEditorState>({ status: "idle" });
+  const [installPrompt, setInstallPrompt] =
+    useState<CodeEditorInstallPromptState | null>(null);
 
   useEffect(() => {
     setState({ status: "idle" });
+    setInstallPrompt(null);
   }, [sessionId]);
 
   useEffect(() => {
     if (!canRun) {
       setState({ status: "idle" });
+      setInstallPrompt(null);
     }
   }, [canRun]);
 
@@ -121,28 +165,73 @@ export function useCodeEditor({
    * Ensure code-server is running and return the launch response.
    * Returns the existing info if already ready, otherwise launches.
    */
-  const ensureRunning =
-    useCallback(async (): Promise<CodeEditorLaunchResponse | null> => {
+  const ensureRunning = useCallback(
+    async ({
+      installIfMissing = false,
+    }: {
+      installIfMissing?: boolean;
+    } = {}): Promise<CodeEditorLaunchResponse | null> => {
       if (state.status === "ready") {
         return state.info;
       }
 
-      if (state.status === "starting" || state.status === "stopping") {
+      if (
+        state.status === "starting" ||
+        state.status === "stopping" ||
+        state.status === "installing"
+      ) {
         return null;
       }
 
-      setState({ status: "starting" });
+      setState({ status: installIfMissing ? "installing" : "starting" });
+      if (installIfMissing) {
+        setInstallPrompt((current) =>
+          current ? { ...current, installError: null } : current,
+        );
+      }
 
       try {
         const response = await fetch(`/api/sessions/${sessionId}/code-editor`, {
           method: "POST",
+          ...(installIfMissing
+            ? {
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ install: true }),
+              }
+            : {}),
         });
         const body: unknown = await response.json().catch(() => null);
+        const missingDependencyResponse = parseMissingDependencyResponse(body);
 
         if (!response.ok) {
-          throw new Error(
-            getErrorMessage(body, "Failed to launch code editor"),
-          );
+          if (
+            !installIfMissing &&
+            response.status === 409 &&
+            missingDependencyResponse
+          ) {
+            setState({ status: "idle" });
+            setInstallPrompt({
+              dependency: missingDependencyResponse.missingDependency,
+              installError: null,
+            });
+            return null;
+          }
+
+          const fallbackMessage = installIfMissing
+            ? "Failed to install code editor"
+            : "Failed to launch code editor";
+          const message = getErrorMessage(body, fallbackMessage);
+          if (installIfMissing) {
+            setState({ status: "idle" });
+            setInstallPrompt((current) =>
+              current ? { ...current, installError: message } : current,
+            );
+            return null;
+          }
+
+          throw new Error(message);
         }
 
         const launchResponse = parseLaunchResponse(body);
@@ -154,9 +243,22 @@ export function useCodeEditor({
           status: "ready",
           info: launchResponse,
         });
+        setInstallPrompt(null);
 
         return launchResponse;
       } catch (error) {
+        if (installIfMissing) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to install code editor";
+          setState({ status: "idle" });
+          setInstallPrompt((current) =>
+            current ? { ...current, installError: message } : current,
+          );
+          return null;
+        }
+
         console.error("Failed to launch code editor:", error);
         setState({
           status: "error",
@@ -167,7 +269,9 @@ export function useCodeEditor({
         });
         return null;
       }
-    }, [sessionId, state]);
+    },
+    [sessionId, state],
+  );
 
   const handleOpen = useCallback(async () => {
     const info = await ensureRunning();
@@ -187,6 +291,13 @@ export function useCodeEditor({
     },
     [ensureRunning, openEditorPage],
   );
+
+  const handleInstall = useCallback(async () => {
+    const info = await ensureRunning({ installIfMissing: true });
+    if (info) {
+      openEditorPage();
+    }
+  }, [ensureRunning, openEditorPage]);
 
   const handleStop = useCallback(async () => {
     if (state.status !== "ready") {
@@ -221,11 +332,13 @@ export function useCodeEditor({
       ? "Open Editor"
       : state.status === "starting"
         ? "Starting Editor..."
-        : state.status === "stopping"
-          ? "Stopping Editor..."
-          : state.status === "error"
-            ? "Retry Editor"
-            : "Open Editor";
+        : state.status === "installing"
+          ? "Installing Editor..."
+          : state.status === "stopping"
+            ? "Stopping Editor..."
+            : state.status === "error"
+              ? "Retry Editor"
+              : "Open Editor";
 
   const menuDetail =
     state.status === "ready" || state.status === "stopping"
@@ -242,8 +355,13 @@ export function useCodeEditor({
     menuLabel,
     menuDetail,
     showStopAction,
+    installPrompt,
+    dismissInstallPrompt: () => {
+      setInstallPrompt(null);
+    },
     handleOpen,
     handleOpenFile,
+    handleInstall,
     handleStop,
   } as const;
 }

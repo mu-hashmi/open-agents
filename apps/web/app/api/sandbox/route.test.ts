@@ -11,6 +11,8 @@ interface TestSessionRecord {
     | { type: "vercel" }
     | {
         type: "daytona";
+        sandboxId?: string;
+        sandboxName?: string;
         sessionId: string;
         workingDirectory: string;
         snapshot?: string;
@@ -82,6 +84,7 @@ const writeFileCalls: Array<{ path: string; content: string }> = [];
 const execCalls: Array<{ command: string; cwd: string; timeoutMs: number }> =
   [];
 const dotenvSyncCalls: Array<Record<string, unknown>> = [];
+const snapshotPreparationCalls: Array<{ apiKey: string; image: string }> = [];
 
 let sessionRecord: TestSessionRecord;
 let currentVercelAuthInfo: TestVercelAuthInfo | null;
@@ -89,6 +92,8 @@ let currentGitHubToken: string | null;
 let currentDaytonaApiKey: string | null;
 let currentDotenvContent: string;
 let currentDotenvError: Error | null;
+let preparedSnapshotName =
+  "open-agents:image:ghcr.io/acme/devbox:latest:abc123def456";
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => ({
@@ -118,6 +123,16 @@ mock.module("@/lib/github/user-token", () => ({
 mock.module("@/lib/daytona/api-key", () => ({
   getUserDaytonaApiKey: async () => currentDaytonaApiKey,
   hasUserDaytonaApiKey: async () => currentDaytonaApiKey !== null,
+}));
+
+mock.module("@/lib/daytona/snapshots", () => ({
+  ensureNamedDaytonaSnapshotForImage: async (input: {
+    apiKey: string;
+    image: string;
+  }) => {
+    snapshotPreparationCalls.push(input);
+    return { created: true, snapshotName: preparedSnapshotName };
+  },
 }));
 
 mock.module("@/lib/vercel/token", () => ({
@@ -178,6 +193,10 @@ mock.module("@open-harness/sandbox", () => ({
               sandboxName: config.state.sandboxName ?? "session_session-1",
               sessionId: config.state.sessionId,
               workingDirectory: config.state.workingDirectory,
+              ...(config.state.image ? { image: config.state.image } : {}),
+              ...(config.state.snapshot
+                ? { snapshot: config.state.snapshot }
+                : {}),
               expiresAt: Date.now() + 120_000,
             }
           : {
@@ -223,6 +242,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     writeFileCalls.length = 0;
     execCalls.length = 0;
     dotenvSyncCalls.length = 0;
+    snapshotPreparationCalls.length = 0;
     process.env.DAYTONA_SANDBOX_BASE_IMAGE = "";
     process.env.DAYTONA_SANDBOX_BASE_SNAPSHOT = "";
     currentVercelAuthInfo = {
@@ -234,6 +254,8 @@ describe("/api/sandbox lifecycle kicks", () => {
     currentDaytonaApiKey = "daytona-key";
     currentDotenvContent = 'API_KEY="secret"\n';
     currentDotenvError = null;
+    preparedSnapshotName =
+      "open-agents:image:ghcr.io/acme/devbox:latest:abc123def456";
     sessionRecord = {
       id: "session-1",
       userId: "user-1",
@@ -476,9 +498,10 @@ describe("/api/sandbox lifecycle kicks", () => {
         createIfMissing: true,
       },
     });
+    expect(snapshotPreparationCalls).toHaveLength(0);
   });
 
-  test("daytona sandboxes inherit the pending session image", async () => {
+  test("explicit daytona image launches are converted into named snapshots", async () => {
     const { POST } = await routeModulePromise;
 
     sessionRecord.vercelProjectId = null;
@@ -503,11 +526,17 @@ describe("/api/sandbox lifecycle kicks", () => {
     );
 
     expect(response.ok).toBe(true);
+    expect(snapshotPreparationCalls).toEqual([
+      {
+        apiKey: "daytona-key",
+        image: "ghcr.io/acme/devbox:latest",
+      },
+    ]);
     expect(connectConfigs[0]).toMatchObject({
       state: {
         type: "daytona",
         sandboxName: "session_session-1",
-        image: "ghcr.io/acme/devbox:latest",
+        snapshot: "open-agents:image:ghcr.io/acme/devbox:latest:abc123def456",
         sessionId: "session-session-1",
         workingDirectory: "/home/daytona/workspace",
       },
@@ -516,6 +545,10 @@ describe("/api/sandbox lifecycle kicks", () => {
         resume: true,
         createIfMissing: true,
       },
+    });
+    expect(connectConfigs[0]?.state).not.toHaveProperty("image");
+    expect(updateCalls[0]?.patch.sandboxState).toMatchObject({
+      snapshot: "open-agents:image:ghcr.io/acme/devbox:latest:abc123def456",
     });
   });
 
@@ -554,6 +587,45 @@ describe("/api/sandbox lifecycle kicks", () => {
         workingDirectory: "/home/daytona/workspace",
       },
     });
+    expect(snapshotPreparationCalls).toHaveLength(0);
+  });
+
+  test("existing daytona sandboxes do not auto-snapshot preserved images", async () => {
+    const { POST } = await routeModulePromise;
+
+    sessionRecord.vercelProjectId = null;
+    sessionRecord.vercelProjectName = null;
+    sessionRecord.vercelTeamId = null;
+    sessionRecord.sandboxState = {
+      type: "daytona",
+      sandboxName: "session_session-1",
+      sessionId: "session-session-1",
+      image: "ghcr.io/open-harness/daytona-base:latest",
+      workingDirectory: "/home/daytona/workspace",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "daytona",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "daytona",
+        sandboxName: "session_session-1",
+        image: "ghcr.io/open-harness/daytona-base:latest",
+        sessionId: "session-session-1",
+        workingDirectory: "/home/daytona/workspace",
+      },
+    });
+    expect(snapshotPreparationCalls).toHaveLength(0);
   });
 
   test("explicit daytona snapshots override the deployment base image", async () => {
@@ -593,6 +665,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       },
     });
     expect(connectConfigs[0]?.state).not.toHaveProperty("image");
+    expect(snapshotPreparationCalls).toHaveLength(0);
   });
 
   test("rejects unsupported sandbox types", async () => {

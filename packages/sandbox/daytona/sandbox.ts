@@ -18,6 +18,7 @@ const MAX_OUTPUT_LENGTH = 50_000;
 const DEFAULT_USER_HOME = "/home/daytona";
 const DEFAULT_AUTO_STOP_INTERVAL_MINUTES = 30;
 const DEFAULT_CONNECT_TIMEOUT_SECONDS = 60;
+const DEFAULT_CREATE_TIMEOUT_SECONDS = 600;
 
 function shellEscape(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -242,6 +243,8 @@ export class DaytonaSandbox implements Sandbox {
   readonly env?: Record<string, string>;
   readonly currentBranch?: string;
   readonly hooks?: SandboxHooks;
+  readonly launchImage?: string;
+  readonly launchSnapshot?: string;
 
   private _expiresAt?: number;
   private _timeout?: number;
@@ -257,7 +260,9 @@ export class DaytonaSandbox implements Sandbox {
       env?: Record<string, string>;
       currentBranch?: string;
       hooks?: SandboxHooks;
+      image?: string;
       previewUrls?: Map<number, string>;
+      snapshot?: string;
       timeout?: number;
       expiresAt?: number;
     },
@@ -266,7 +271,9 @@ export class DaytonaSandbox implements Sandbox {
     this.env = options.env;
     this.currentBranch = options.currentBranch;
     this.hooks = options.hooks;
+    this.launchImage = options.image;
     this.previewUrls = options.previewUrls ?? new Map();
+    this.launchSnapshot = options.snapshot;
     this._timeout = options.timeout;
     this._expiresAt = options.expiresAt;
   }
@@ -368,8 +375,10 @@ ${previewBlock}`;
       sandboxName: this.sandbox.name,
       sessionId: this.sessionId,
       workingDirectory: this.workingDirectory,
+      ...(this.launchImage ? { image: this.launchImage } : {}),
       ...(this._expiresAt !== undefined ? { expiresAt: this._expiresAt } : {}),
       resources: toResourcesState(this.sandbox),
+      ...(this.launchSnapshot ? { snapshot: this.launchSnapshot } : {}),
     };
   }
 
@@ -642,7 +651,7 @@ ${previewBlock}`;
             ...baseParams,
             snapshot: config.snapshot,
           },
-          { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
+          { timeout: DEFAULT_CREATE_TIMEOUT_SECONDS },
         )
       : config.image
         ? await daytona.create(
@@ -651,10 +660,10 @@ ${previewBlock}`;
               image: config.image,
               ...(config.resources ? { resources: config.resources } : {}),
             },
-            { timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS },
+            { timeout: DEFAULT_CREATE_TIMEOUT_SECONDS },
           )
         : await daytona.create(baseParams, {
-            timeout: DEFAULT_CONNECT_TIMEOUT_SECONDS,
+            timeout: DEFAULT_CREATE_TIMEOUT_SECONDS,
           });
 
     await ensureSessionExists(sandbox, config.sessionId);
@@ -747,7 +756,9 @@ ${previewBlock}`;
       env,
       currentBranch,
       hooks: config.hooks,
+      image: config.image,
       previewUrls,
+      snapshot: config.snapshot,
       timeout: timeoutInfo.timeout,
       expiresAt: timeoutInfo.expiresAt,
     });
@@ -782,7 +793,9 @@ ${previewBlock}`;
       workingDirectory: state.workingDirectory,
       env: buildSandboxEnv(config),
       hooks: config.hooks,
+      image: state.image,
       previewUrls,
+      snapshot: state.snapshot,
       timeout: timeoutInfo.timeout,
       expiresAt: state.expiresAt ?? timeoutInfo.expiresAt,
     });

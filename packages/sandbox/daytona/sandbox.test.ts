@@ -321,4 +321,65 @@ describe("DaytonaSandbox blank sandbox creation", () => {
     expect(createParams.snapshot).toBeUndefined();
     expect(createParams.image).toBeUndefined();
   });
+
+  test("uses the extended sandbox creation timeout", async () => {
+    const { DaytonaSandbox } = await sandboxModulePromise;
+
+    await DaytonaSandbox.create({
+      apiKey: "daytona-key",
+      name: "blank-sandbox",
+      sessionId: "session-1",
+    });
+
+    expect(createSandboxMock).toHaveBeenCalledTimes(1);
+    const [, options] = createSandboxMock.mock.calls[0] ?? [];
+
+    expect(options).toEqual({ timeout: 600 });
+  });
+});
+
+describe("DaytonaSandbox state persistence", () => {
+  test("preserves snapshot launch sources in getState", async () => {
+    const { DaytonaSandbox } = await sandboxModulePromise;
+
+    const sandbox = await DaytonaSandbox.create({
+      apiKey: "daytona-key",
+      name: "snapshot-sandbox",
+      sessionId: "session-1",
+      snapshot: "open-agents:image:base:abc123def456",
+    });
+
+    expect(sandbox.getState()).toMatchObject({
+      type: "daytona",
+      sandboxId: "sandbox-1",
+      sandboxName: "casablanca",
+      sessionId: "session-1",
+      snapshot: "open-agents:image:base:abc123def456",
+      workingDirectory: "/home/daytona/workspace",
+    });
+  });
+
+  test("preserves image launch sources in getState", async () => {
+    const { DaytonaSandbox } = await sandboxModulePromise;
+
+    const sandbox = await DaytonaSandbox.connect(
+      {
+        image: "ghcr.io/acme/devbox:latest",
+        sandboxId: "sandbox-1",
+        sandboxName: "casablanca",
+        sessionId: "session-1",
+        workingDirectory: "/workspace",
+      },
+      { apiKey: "daytona-key" },
+    );
+
+    expect(sandbox.getState()).toMatchObject({
+      type: "daytona",
+      sandboxId: "sandbox-1",
+      sandboxName: "casablanca",
+      sessionId: "session-1",
+      image: "ghcr.io/acme/devbox:latest",
+      workingDirectory: "/workspace",
+    });
+  });
 });

@@ -284,11 +284,17 @@ export function clearSandboxState(
     const sandboxName = getPersistentSandboxName(state);
     const sandboxId = sandboxName ? null : getLegacySandboxId(state);
     const sessionId = getDaytonaSessionId(state);
+    const snapshot = getDaytonaSnapshot(state);
+    const image = snapshot ? null : getDaytonaImage(state);
     const workingDirectory = getWorkingDirectory(state);
     const resources = getDaytonaResources(state);
 
     if (!sessionId || !workingDirectory) {
-      return { type: "daytona" } as SandboxState;
+      return {
+        type: "daytona",
+        ...(snapshot ? { snapshot } : {}),
+        ...(image ? { image } : {}),
+      } as SandboxState;
     }
 
     return {
@@ -298,6 +304,8 @@ export function clearSandboxState(
       sessionId,
       workingDirectory,
       ...(resources ? { resources } : {}),
+      ...(snapshot ? { snapshot } : {}),
+      ...(image ? { image } : {}),
     } as SandboxState;
   }
 

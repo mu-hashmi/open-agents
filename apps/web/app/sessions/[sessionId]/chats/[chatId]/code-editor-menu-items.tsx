@@ -19,6 +19,7 @@ export function CodeEditorMenuItems({
 }: CodeEditorMenuItemsProps) {
   const isPrimaryBusy =
     codeEditor.state.status === "starting" ||
+    codeEditor.state.status === "installing" ||
     codeEditor.state.status === "stopping";
 
   return (
